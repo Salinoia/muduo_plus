@@ -6,9 +6,6 @@ project(muduo-core)
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Expose headers from third_party (e.g. nlohmann/json)
-include_directories(${PROJECT_SOURCE_DIR}/third_party)
-
 enable_testing()
 
 #链接必要的库
@@ -16,7 +13,6 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 set(LIBS pthread)
 
 #添加子目录
-add_subdirectory(src/core)
-add_subdirectory(src/modules)
+add_subdirectory(core)
 
 

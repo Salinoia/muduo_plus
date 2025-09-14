@@ -6,5 +6,5 @@ add_library(muduo_core SHARED ${SRC_FILES})
 
 #设置头文件的路径
  target_include_directories(muduo_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                             ${CMAKE_SOURCE_DIR}/src/framework/utils)
+                                             ${CMAKE_SOURCE_DIR}/other)
 
