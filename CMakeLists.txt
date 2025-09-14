@@ -19,9 +19,4 @@ set(LIBS pthread)
 add_subdirectory(src/core)
 add_subdirectory(src/modules)
 
-option(BUILD_EXAMPLES "Build examples" OFF)
-if(BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
 
-add_subdirectory(tests)
