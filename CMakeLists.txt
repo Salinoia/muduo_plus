@@ -13,12 +13,6 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 set(LIBS pthread)
 
 #添加子目录
-add_subdirectory(core)
-add_subdirectory(modules)
+add_subdirectory(muduo_core)
+add_subdirectory(http_server)
 
-option(BUILD_EXAMPLES "Build examples" OFF)
-if(BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
-
-add_subdirectory(tests)

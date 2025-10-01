@@ -1,6 +1,4 @@
 .vscode/
 build/
-example/echo
-example/Client
 lib/
-note/
+modules/
