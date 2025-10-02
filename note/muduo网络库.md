@@ -407,7 +407,7 @@ public:
         auto self = shared_from_this();
         server_.setConnectionCallback([self](const TcpConnectionPtr& conn) { self->onConnection(conn); });
 
-        server_.setMessageCallback([self](const TcpConnectionPtr& conn, Buffer* buf, TimeStamp time) { self->onMessage(conn, buf, time); });
+        server_.setMessageCallback([self](const TcpConnectionPtr& conn, Buffer* buf, Timestamp time) { self->onMessage(conn, buf, time); });
 
         server_.setThreadNum(4);
         server_.start();
@@ -423,7 +423,7 @@ private:
             LOG_INFO("Connection closed [%s -> %s]", conn->localAddress().toIpPort().c_str(), conn->peerAddress().toIpPort().c_str());
         }
     }
-    void onMessage(const TcpConnectionPtr& conn, Buffer* buf, TimeStamp time) {
+    void onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp time) {
         std::string request = buf->retrieveAllAsString();
         // 简易HTTP协议识别
         if (request.find("GET / HTTP/1.") != std::string::npos) {
@@ -633,7 +633,7 @@ void EchoServer::onConnection(const TcpConnectionPtr& conn) {
 
 ```cpp
 // 读是相对服务器而言的 当对端客户端有数据到达 服务器端检测到 EPOLL_IN 就会触发该fd上的回调 handleRead取读走对端发来的数据
-void TcpConnection::handleRead(TimeStamp receiveTime) {
+void TcpConnection::handleRead(Timestamp receiveTime) {
     int saveErrno = 0;
     ssize_t n = inputBuffer_.readFd(channel_->getFd(), &saveErrno);
     if (n > 0) {

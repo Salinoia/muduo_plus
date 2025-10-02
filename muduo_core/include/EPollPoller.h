@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Poller.h"
-#include "TimeStamp.h"
+#include "Timestamp.h"
 
 // epoll使用三个功能：
 // 1.epoll_create
@@ -17,7 +17,7 @@ public:
     EPollPoller(EventLoop* loop);
     ~EPollPoller() override;
 
-    TimeStamp poll(int timeoutMs, ChannelList* activeChannels) override;
+    Timestamp poll(int timeoutMs, ChannelList* activeChannels) override;
     void updateChannel(Channel* channel) override;
     void removeChannel(Channel* channel) override;
 

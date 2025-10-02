@@ -1,4 +1,4 @@
-#include "http/HttpResponse.h"
+#include "HttpResponse.h"
 
 #include <cstdio>
 #include <cstring>
@@ -31,4 +31,10 @@ void HttpResponse::appendToBuffer(Buffer* output) const {
 
     output->append("\r\n", 2);
     output->append(body_.c_str(), body_.size());
+}
+
+void HttpResponse::setStatusLine(const std::string& version, HttpStatusCode statusCode, const std::string& statusMessage) {
+    httpVersion_ = version;
+    statusCode_ = statusCode;
+    statusMessage_ = statusMessage;
 }

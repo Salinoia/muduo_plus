@@ -1,6 +1,7 @@
 #include "RedisClient.h"
 
 #include <iostream>
+#include <strings.h>
 
 RedisClient::RedisClient(const std::string& host, int port,
                          const std::string& password,

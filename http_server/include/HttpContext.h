@@ -1,9 +1,9 @@
 #pragma once
 
-#include "http/HttpRequest.h"
+#include "HttpRequest.h"
 
 class Buffer;
-class TimeStamp;
+class Timestamp;
 
 class HttpContext {
 public:
@@ -16,7 +16,7 @@ public:
 
     HttpContext() : state_(kExpectRequestLine) {}
 
-    bool parseRequest(Buffer* buf, TimeStamp receiveTime);
+    bool parseRequest(Buffer* buf, Timestamp receiveTime);
 
     bool gotAll() const { return state_ == kGotAll; }
     void reset();

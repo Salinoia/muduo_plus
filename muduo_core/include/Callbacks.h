@@ -6,7 +6,7 @@
 // 前向声明（Forward Declarations）
 class Buffer;  // 网络数据缓冲区类
 class TcpConnection;  // TCP连接类
-class TimeStamp;  // 时间戳工具类
+class Timestamp;  // 时间戳工具类
 
 // 智能指针类型别名
 using TcpConnectionPtr = std::shared_ptr<TcpConnection>;
@@ -27,4 +27,4 @@ using WriteCompleteCallback = std::function<void(const TcpConnectionPtr&)>;  // 
 using HighWaterMarkCallback = std::function<void(const TcpConnectionPtr&, size_t)>;  // 发送缓冲区超过高水位阈值时触发
 
 // 数据到达回调（带缓冲区和时间戳）
-using MessageCallback = std::function<void(const TcpConnectionPtr&, Buffer*, TimeStamp)>;  // 接收到新数据时触发（带接收缓冲区和时间戳）
+using MessageCallback = std::function<void(const TcpConnectionPtr&, Buffer*, Timestamp)>;  // 接收到新数据时触发（带接收缓冲区和时间戳）

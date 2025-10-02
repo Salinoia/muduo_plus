@@ -28,7 +28,7 @@
 │   ├── TcpConnection.h     # TCP 连接
 │   ├── TcpServer.h         # TCP 服务器
 │   ├── Thread.h            # 线程封装
-│   └── TimeStamp.h         # 时间戳工具
+│   └── Timestamp.h         # 时间戳工具
 ├── src/                    # 源文件目录
 │   └── (对应头文件的实现)
 ├── example/                # 示例代码
@@ -101,7 +101,7 @@ public:
             self->onConnection(conn);
         });
         
-        server_.setMessageCallback([self](const TcpConnectionPtr& conn, Buffer* buf, TimeStamp time) {
+        server_.setMessageCallback([self](const TcpConnectionPtr& conn, Buffer* buf, Timestamp time) {
             self->onMessage(conn, buf, time);
         });
         

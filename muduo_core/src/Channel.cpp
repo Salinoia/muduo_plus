@@ -31,7 +31,7 @@ void Channel::remove() {
     loop_->updateChannel(this);
 }
 
-void Channel::handleEvent(TimeStamp receiveTime) {
+void Channel::handleEvent(Timestamp receiveTime) {
     // 如果Channel绑定了共享对象（如TcpConnection）
     if (tied_) {
         // 尝试提升为强引用，防止处理期间对象被销毁
@@ -40,7 +40,7 @@ void Channel::handleEvent(TimeStamp receiveTime) {
             handleEventWithGuard(receiveTime);  // 对象存活，正常处理事件
         } else {
             // 对象已销毁，无需处理（TcpConnection生命周期结束）
-            LOG_ERROR("The tied object is already destroyed. Skipping event handling.");
+            Logger::instance().error("The tied object is already destroyed. Skipping event handling.");
         }
     } else {
         // 未绑定共享对象，直接处理事件
@@ -48,8 +48,8 @@ void Channel::handleEvent(TimeStamp receiveTime) {
     }
 }
 
-void Channel::handleEventWithGuard(TimeStamp receiveTime) {
-    LOG_INFO("channel handleEvent revents:%d\n", revents_);
+void Channel::handleEventWithGuard(Timestamp receiveTime) {
+    Logger::instance().info("channel handleEvent revents:{}", revents_);
 
     // 处理挂断事件（EPOLLHUP且无EPOLLIN）
     // 触发场景：对方关闭写端或连接完全关闭

@@ -8,7 +8,7 @@
 #include "Callbacks.h"
 #include "InetAddress.h"
 #include "NonCopyable.h"
-#include "TimeStamp.h"
+#include "Timestamp.h"
 
 class Channel;
 class EventLoop;
@@ -92,7 +92,7 @@ private:
 
     // ==== 内部方法 ====
     void setState(StateE state) { state_ = state; }
-    void handleRead(TimeStamp receiveTime);
+    void handleRead(Timestamp receiveTime);
     void handleWrite();  // 处理写事件
     void handleClose();
     void handleError();
@@ -100,3 +100,9 @@ private:
     void shutdownInLoop();
     void sendFileInLoop(int fileDescriptor, off_t offset, size_t count);
 };
+namespace std {
+template <>
+struct formatter<TcpConnection*, char> : formatter<void*, char> {
+    auto format(TcpConnection* p, auto& ctx) const { return formatter<void*, char>::format(static_cast<void*>(p), ctx); }
+};
+}

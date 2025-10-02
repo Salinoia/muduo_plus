@@ -11,7 +11,7 @@
 static int createNonBlockingSocket() {
     int sockfd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
     if (sockfd < 0) {
-        LOG_FATAL("%s:%s:%d listen socket create err:%d\n", __FILE__, __FUNCTION__, __LINE__, errno);
+        Logger::instance().fatal("isten socket create err:{}", errno);
     }
     return sockfd;
 }
@@ -27,7 +27,7 @@ Acceptor::Acceptor(EventLoop* loop, const InetAddress& listenAddr, bool reusePor
     acceptSocket_.bindAddress(listenAddr);  // 绑定监听地址（IP+Port）
     // TcpServer::start() => Acceptor.listen() 如果有新用户连接 要执行一个回调(accept => connfd => 打包成Channel => 唤醒subloop)
     // baseloop监听到有事件发生 => acceptChannel_(listenfd) => 执行该回调函数
-    acceptChannel_.setReadCallback([this](TimeStamp t) { this->handleRead(); });
+    acceptChannel_.setReadCallback([this](Timestamp t) { this->handleRead(); });
 }
 
 Acceptor::~Acceptor() {
@@ -51,9 +51,9 @@ void Acceptor::handleRead() {
             ::close(connfd);
         }
     } else {
-        LOG_ERROR("%s:%s:%d accept err:%d\n", __FILE__, __FUNCTION__, __LINE__, errno);
+        Logger::instance().error("accept err:{}", errno);
         if (errno == EMFILE) {
-            LOG_ERROR("%s:%s:%d sockfd reached limit\n", __FILE__, __FUNCTION__, __LINE__);
+            Logger::instance().error("socketfd reached limit:{}", errno);
         }
     }
 }

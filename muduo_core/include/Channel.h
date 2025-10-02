@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "NonCopyable.h"
-#include "TimeStamp.h"
+#include "Timestamp.h"
 
 class InetAddress;
 class EventLoop;
@@ -12,13 +12,13 @@ class EventLoop;
 class Channel : NonCopyable {
 public:
     using EventCallback = std::function<void()>;  // 普通事件回调类型
-    using ReadEventCallback = std::function<void(TimeStamp)>;  // 读事件回调(带时间戳)
+    using ReadEventCallback = std::function<void(Timestamp)>;  // 读事件回调(带时间戳)
 
     Channel(EventLoop* loop, int fd);  // 构造函数(所属EventLoop和文件描述符)
     ~Channel();  // 析构时自动移除监听
 
     // 处理事件(EventLoop发现事件后调用)
-    void handleEvent(TimeStamp receiveTime);
+    void handleEvent(Timestamp receiveTime);
 
     // 设置各类事件回调函数
     void setWriteCallback(EventCallback cb) { writeCallback_ = std::move(cb); }  // 设置写回调
@@ -102,5 +102,12 @@ private:
 
     // ==== 内部方法 ====
     void update();  // 更新事件监听状态
-    void handleEventWithGuard(TimeStamp receiveTime);  // 执行回调（带保护）
+    void handleEventWithGuard(Timestamp receiveTime);  // 执行回调（带保护）
 };
+
+namespace std {
+template <>
+struct formatter<Channel*, char> : formatter<void*, char> {
+    auto format(Channel* p, auto& ctx) const { return formatter<void*, char>::format(static_cast<void*>(p), ctx); }
+};
+}

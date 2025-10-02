@@ -1,58 +1,89 @@
 #pragma once
+
+#include <format>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <source_location>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "NonCopyable.h"
 
-// 定义日志级别
-enum LogLevel {
-    TRACE,  // 新增：流程追踪
-    DEBUG,  // 调试信息
-    INFO,  // 普通信息
-    WARN,  // 警告信息
-    ERROR,  // 错误信息
-    FATAL,  // core dump信息
+// 日志级别
+enum class LogLevel {
+    TRACE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL,
 };
-// 线程局部存储（TLS）缓存 Logger 实例
+
 class Logger : NonCopyable {
 public:
-    static Logger& instance();  // 获取全局单例（带线程本地缓存）
+    // 单例获取
+    static Logger& instance();
 
-    void setLogLevel(LogLevel level);  // 设置日志级别
-    void log(LogLevel level, const std::string& msg);  // 记录日志
-    LogLevel getLogLevel() const { return logLevel_; }
+    // 设置日志级别
+    void setLogLevel(LogLevel level);
+    LogLevel getLogLevel() const;
 
+    // 输出目标设置
     void setOutputToConsole(bool enable);
     void setOutputToFile(const std::string& filename);
 
+    // 核心接口
+    void log(LogLevel level, const std::string& msg);
+
+    // 模板化便捷接口（支持 std::format + source_location）
+    template <typename... Args>
+    void logWithLocation(LogLevel level, std::string_view fmt, Args&&... args) {
+        logWithLocImpl(level, std::source_location::current(), fmt, std::forward<Args>(args)...);
+    }
+
+    // 便捷调用
+    template <typename... Args>
+    void trace(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::TRACE, fmt, std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void debug(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::DEBUG, fmt, std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void info(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::INFO, fmt, std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void warn(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::WARN, fmt, std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void error(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::ERROR, fmt, std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void fatal(std::string_view fmt, Args&&... args) {
+        logWithLocation(LogLevel::FATAL, fmt, std::forward<Args>(args)...);
+    }
+
 private:
-    Logger();  // 私有构造函数（单例模式）
+    Logger();
     ~Logger();
 
-    LogLevel logLevel_ = INFO;  // 默认日志级别
-    std::mutex mutex_;  // 保护日志输出
+    static const char* levelToString(LogLevel level);
 
-    // 输出目标
+    LogLevel logLevel_ = LogLevel::INFO;
+    mutable std::mutex mutex_;
     bool consoleOutput_ = true;
     std::unique_ptr<std::ofstream> fileOutput_;
+
+private:
+    template <typename... Args>
+    void logWithLocImpl(LogLevel level, const std::source_location& loc, std::string_view fmt, Args&&... args) {
+        auto formatted = std::vformat(fmt, std::make_format_args(args...));
+        log(level, std::format("[{}:{}:{}] {}", loc.file_name(), loc.function_name(), loc.line(), formatted));
+    }
 };
-
-// 日志宏（自动附加日志级别、线程安全）
-#define LOG_TRACE(fmt, ...)                        \
-    if (Logger::instance().getLogLevel() <= TRACE) \
-    Logger::instance().log(TRACE, formatLog(fmt, ##__VA_ARGS__))
-#ifdef MUDEBUG
-#    define LOG_DEBUG(fmt, ...) Logger::instance().log(DEBUG, formatLog(fmt, ##__VA_ARGS__))
-#else
-#    define LOG_DEBUG(fmt, ...)  // 空宏（生产环境不生效）
-#endif
-#define LOG_INFO(fmt, ...) Logger::instance().log(INFO, formatLog(fmt, ##__VA_ARGS__))
-#define LOG_WARN(fmt, ...) Logger::instance().log(WARN, formatLog(fmt, ##__VA_ARGS__))
-#define LOG_ERROR(fmt, ...) Logger::instance().log(ERROR, formatLog(fmt, ##__VA_ARGS__))
-#define LOG_FATAL(fmt, ...) Logger::instance().log(FATAL, formatLog(fmt, ##__VA_ARGS__))
-
-// 格式化字符串（防止缓冲区溢出）
-std::string formatLog(const char* fmt, ...);

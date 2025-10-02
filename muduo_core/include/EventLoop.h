@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -8,7 +9,7 @@
 
 #include "CurrentThread.h"
 #include "NonCopyable.h"
-#include "TimeStamp.h"
+#include "Timestamp.h"
 
 class Channel;
 class Poller;
@@ -23,7 +24,7 @@ public:
     void loop();
     void quit();
 
-    TimeStamp pollReturnTime() const { return pollReturnTime_; }
+    Timestamp pollReturnTime() const { return pollReturnTime_; }
     void runInLoop(Functor cb);  // 在当前loop中执行
     void queueInLoop(Functor cb);  // 把上层注册的回调函数cb放入队列中 唤醒loop所在的线程执行cb
     void wakeup();  // 通过eventfd唤醒loop对应的线程
@@ -46,7 +47,7 @@ private:
     // ==== Poller 相关 ====
     using ChannelList = std::vector<Channel*>;
     std::unique_ptr<Poller> poller_;  // Poller 实例（epoll抽象）
-    TimeStamp pollReturnTime_;  // Poller返回事件的时间戳
+    Timestamp pollReturnTime_;  // Poller返回事件的时间戳
     ChannelList activeChannels_;  // 当前活跃的Channel列表
 
     // ==== 跨线程任务调度 ====
@@ -60,3 +61,10 @@ private:
     void handleRead();  // 处理wakeupFd_的可读事件
     void doPendingFunctors();  // 执行回调队列
 };
+
+namespace std {
+template <>
+struct formatter<EventLoop*, char> : formatter<void*, char> {
+    auto format(EventLoop* p, auto& ctx) const { return formatter<void*, char>::format(static_cast<void*>(p), ctx); }
+};
+}

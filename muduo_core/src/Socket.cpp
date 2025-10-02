@@ -13,13 +13,13 @@ Socket::~Socket() {
 }
 void Socket::bindAddress(const InetAddress& local_addr) {
     if (::bind(sockfd_, (sockaddr*) local_addr.getSockAddr(), sizeof(sockaddr_in)) != 0) {
-        LOG_FATAL("bind socket fd:%d fail", sockfd_);
+        Logger::instance().fatal("bind socket fd:{} fail", sockfd_);
     }
 }
 
 void Socket::listen() {
     if (::listen(sockfd_, 1024) != 0) {
-        LOG_FATAL("listen socket fd:%d fail", sockfd_);
+        Logger::instance().fatal("listen socket fd:{} fail", sockfd_);
     }
 }
 
@@ -39,7 +39,7 @@ int Socket::accept(InetAddress* peerAddr) {
 
 void Socket::shutdownWrite() {
     if (::shutdown(sockfd_, SHUT_WR) < 0) {
-        LOG_ERROR("shutdownWrite error");
+        Logger::instance().error("shutdownWrite error");
     }
 }
 // Nagle 算法用于减少网络上传输的小数据包数量。

@@ -2,8 +2,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(muduo-core)
 
-#设置全局的c++标准
-set (CMAKE_CXX_STANDARD 17)
+#设置全局的 C++ 标准
+set (CMAKE_CXX_STANDARD 20)
 set (CMAKE_CXX_STANDARD_REQUIRED True)
 
 enable_testing()
@@ -15,4 +15,5 @@ set(LIBS pthread)
 #添加子目录
 add_subdirectory(muduo_core)
 add_subdirectory(http_server)
+add_subdirectory(examples)
 
