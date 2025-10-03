@@ -4,13 +4,13 @@
 
 #include <functional>
 
-#include "Logger.h"
+#include "LogMacros.h"
 #include "TcpConnection.h"
 
 namespace {
 EventLoop* CheckLoopNotNull(EventLoop* loop) {
     if (loop == nullptr) {
-        Logger::instance().fatal("mainLoop is null!");
+        LOG_FATAL("mainLoop is null!");
     }
     return loop;
 }
@@ -65,13 +65,13 @@ void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr) {
     char buf[64] = {0};
     snprintf(buf, sizeof buf, "-%s#%d", ipPort_.c_str(), connId); // 注意：通过load()方法获取原子变量的值
     std::string connName = name_ + buf;
-    Logger::instance().info("TcpServer::newConnection [{}] - new connection [{}] from {}", name_, connName, peerAddr.toIpPort());
+    LOG_INFO("TcpServer::newConnection [{}] - new connection [{}] from {}", name_, connName, peerAddr.toIpPort());
 
     sockaddr_in local;
     socklen_t addrLen = sizeof(local);
     ::memset(&local, 0, addrLen);
     if (::getsockname(sockfd, (sockaddr*) &local, &addrLen) < 0) {
-        Logger::instance().error("socket::getLocalAddr");
+        LOG_ERROR("socket::getLocalAddr");
     }
     InetAddress localAddr(local);
     TcpConnectionPtr conn(new TcpConnection(ioLoop, connName, sockfd, localAddr, peerAddr));
@@ -95,7 +95,7 @@ void TcpServer::removeConnection(const TcpConnectionPtr& conn) {
 }
 
 void TcpServer::removeConnectionInLoop(const TcpConnectionPtr& conn) {
-    Logger::instance().info("TcpServer::removeConnectionInLoop [{}] - connection {}", name_, conn->name());
+    LOG_INFO("TcpServer::removeConnectionInLoop [{}] - connection {}", name_, conn->name());
     connections_.erase(conn->name());
     EventLoop* ioLoop = conn->getLoop();
     // ioLoop->queueInLoop(std::bind(&TcpConnection::connectDestroyed, conn));

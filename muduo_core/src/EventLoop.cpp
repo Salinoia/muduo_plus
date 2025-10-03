@@ -3,7 +3,7 @@
 #include <sys/eventfd.h>
 
 #include "Channel.h"
-#include "Logger.h"
+#include "LogMacros.h"
 #include "Poller.h"
 
 // 每个线程对应一个 EventLoop
@@ -28,7 +28,7 @@ const int kPollTime = 10000;  // 10000ms = 10s
 int createEventfd() {
     int evtfd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (evtfd < 0) {
-        Logger::instance().fatal("eventfd error:%d", errno);
+        LOG_FATAL("eventfd error:%d", errno);
     }
     return evtfd;
 }
@@ -41,11 +41,11 @@ EventLoop::EventLoop() :
     poller_(Poller::newDefaultPoller(this)),
     wakeupFd_(createEventfd()),
     wakeupChannel_(new Channel(this, wakeupFd_)) {
-    Logger::instance().debug("EvnetLoop created {} in thread {}", this, threadId_);
+    LOG_DEBUG("EvnetLoop created {} in thread {}", this, threadId_);
     if (t_loopInThisThread == nullptr) {
         t_loopInThisThread = this;
     } else {
-        Logger::instance().fatal("Another EventLoop {} exists in thread {}", t_loopInThisThread, threadId_);
+        LOG_FATAL("Another EventLoop {} exists in thread {}", t_loopInThisThread, threadId_);
     }
     wakeupChannel_->setReadCallback([this](Timestamp t) { this->handleRead(); });  // 设置 wakeupfd 的事件类型以及发生事件后的回调操作
     wakeupChannel_->enableReading();  // 每个 EventLoop 都监听 wakeupChannel_的EPOLL读事件
@@ -61,7 +61,7 @@ EventLoop::~EventLoop() {
 void EventLoop::loop() {
     looping_ = true;
     quit_ = false;
-    Logger::instance().info("EventLoop {} start looping", this);
+    LOG_INFO("EventLoop {} start looping", this);
     while (!quit_) {
         activeChannels_.clear();
         pollReturnTime_ = poller_->poll(kPollTime, &activeChannels_);
@@ -70,7 +70,7 @@ void EventLoop::loop() {
         }
         doPendingFunctors();
     }
-    Logger::instance().info("EventLoop {} stop looping\n", this);
+    LOG_INFO("EventLoop {} stop looping\n", this);
     looping_ = false;
 }
 
@@ -103,7 +103,7 @@ void EventLoop::wakeup() {
     uint64_t one = 1;
     ssize_t n = write(wakeupFd_, &one, sizeof(one));
     if (n != sizeof(one)) {
-        Logger::instance().error("EventLoop::wakeup() writes {} bytes instead of 8", n);
+        LOG_ERROR("EventLoop::wakeup() writes {} bytes instead of 8", n);
     }
 }
 
@@ -123,7 +123,7 @@ void EventLoop::handleRead() {
     uint64_t one = 1;
     ssize_t n = read(wakeupFd_, &one, sizeof(one));
     if (n != sizeof(one)) {
-        Logger::instance().error("EventLoop::handleRead() writes {} bytes instead of 8", n);
+        LOG_ERROR("EventLoop::handleRead() writes {} bytes instead of 8", n);
     }
 }
 

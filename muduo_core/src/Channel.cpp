@@ -3,7 +3,7 @@
 #include <sys/epoll.h>
 
 #include "EventLoop.h"
-#include "Logger.h"
+#include "LogMacros.h"
 
 // 静态常量在源文件中实现
 const int Channel::kNoneEvent = 0;  // 空事件
@@ -40,7 +40,7 @@ void Channel::handleEvent(Timestamp receiveTime) {
             handleEventWithGuard(receiveTime);  // 对象存活，正常处理事件
         } else {
             // 对象已销毁，无需处理（TcpConnection生命周期结束）
-            Logger::instance().error("The tied object is already destroyed. Skipping event handling.");
+            LOG_ERROR("The tied object is already destroyed. Skipping event handling.");
         }
     } else {
         // 未绑定共享对象，直接处理事件
@@ -49,7 +49,7 @@ void Channel::handleEvent(Timestamp receiveTime) {
 }
 
 void Channel::handleEventWithGuard(Timestamp receiveTime) {
-    Logger::instance().info("channel handleEvent revents:{}", revents_);
+    LOG_INFO("channel handleEvent revents:{}", revents_);
 
     // 处理挂断事件（EPOLLHUP且无EPOLLIN）
     // 触发场景：对方关闭写端或连接完全关闭

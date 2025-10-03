@@ -7,11 +7,12 @@
 
 #include "InetAddress.h"
 #include "Logger.h"
+#include "LogMacros.h"
 
 static int createNonBlockingSocket() {
     int sockfd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
     if (sockfd < 0) {
-        Logger::instance().fatal("isten socket create err:{}", errno);
+        LOG_FATAL("isten socket create err:{}", errno);
     }
     return sockfd;
 }
@@ -51,9 +52,9 @@ void Acceptor::handleRead() {
             ::close(connfd);
         }
     } else {
-        Logger::instance().error("accept err:{}", errno);
+        LOG_ERROR("accept err:{}", errno);
         if (errno == EMFILE) {
-            Logger::instance().error("socketfd reached limit:{}", errno);
+            LOG_ERROR("socketfd reached limit:{}", errno);
         }
     }
 }

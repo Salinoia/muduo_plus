@@ -4,12 +4,12 @@
 
 #include "Channel.h"
 #include "EventLoop.h"
-#include "Logger.h"
+#include "LogMacros.h"
 #include "Socket.h"
 
 static EventLoop* CheckLoopNotNull(EventLoop* loop) {
     if (loop == nullptr) {
-        Logger::instance().fatal("mainLoop is null!");
+        LOG_FATAL("mainLoop is null!");
     }
     return loop;
 }
@@ -28,12 +28,12 @@ TcpConnection::TcpConnection(EventLoop* loop, const std::string& nameArg, int so
     channel_->setWriteCallback([this]() { this->handleWrite(); });
     channel_->setCloseCallback([this]() { this->handleClose(); });
     channel_->setErrorCallback([this]() { this->handleError(); });
-    Logger::instance().trace("TcpConnection::ctor[{}] at fd = {}", name_, sockfd);
+    LOG_TRACE("TcpConnection::ctor[{}] at fd = {}", name_, sockfd);
     socket_->setKeepAlive(true);
 }
 
 TcpConnection::~TcpConnection() {
-    Logger::instance().info("TcpConnection::dtor[{}] at fd = {} state = {}", name_, channel_->getFd(), state_.load());
+    LOG_INFO("TcpConnection::dtor[{}] at fd = {} state = {}", name_, channel_->getFd(), state_.load());
 }
 
 void TcpConnection::send(const std::string& buf) {
@@ -58,7 +58,7 @@ void TcpConnection::sendFile(int fileDescriptor, off_t offset, size_t count) {
             loop_->runInLoop([self = shared_from_this(), fileDescriptor, offset, count]() { self->sendFileInLoop(fileDescriptor, offset, count); });
         }
     } else {
-        Logger::instance().error("TcpConnection::sendFile : not connected");
+        LOG_ERROR("TcpConnection::sendFile : not connected");
     }
 }
 
@@ -96,7 +96,7 @@ void TcpConnection::handleRead(Timestamp receiveTime) {
         handleClose();
     } else {
         errno = saveErrno;
-        Logger::instance().error("TcpConnection::handleRead");
+        LOG_ERROR("TcpConnection::handleRead");
         handleError();
     }
 }
@@ -117,15 +117,15 @@ void TcpConnection::handleWrite() {
                 }
             }
         } else {
-            Logger::instance().error("TcpConnection::handleWrite");
+            LOG_ERROR("TcpConnection::handleWrite");
         }
     } else {
-        Logger::instance().error("TcpConnection fd = {} is down, no more writing operations", channel_->getFd());
+        LOG_ERROR("TcpConnection fd = {} is down, no more writing operations", channel_->getFd());
     }
 }
 
 void TcpConnection::handleClose() {
-    Logger::instance().info("TcpConnection::handleClose fd = {} state = {}", channel_->getFd(), state_.load());
+    LOG_INFO("TcpConnection::handleClose fd = {} state = {}", channel_->getFd(), state_.load());
     setState(kDisconnected);
     channel_->disableAll();
 
@@ -143,7 +143,7 @@ void TcpConnection::handleError() {
     } else {
         err = optval;
     }
-    Logger::instance().error("TcpConnection::handleError name: {} - SO_ERROR: {}", name_, err);
+    LOG_ERROR("TcpConnection::handleError name: {} - SO_ERROR: {}", name_, err);
 }
 
 void TcpConnection::sendInLoop(const void* data, size_t len) {
@@ -152,7 +152,7 @@ void TcpConnection::sendInLoop(const void* data, size_t len) {
     bool faultError = false;
 
     if (state_ == kDisconnected) {
-        Logger::instance().error("Disconnected, give up writing operations.");
+        LOG_ERROR("Disconnected, give up writing operations.");
         // return;
     }
     // 第一次开始写数据或缓冲区没有带发送数据
@@ -171,7 +171,7 @@ void TcpConnection::sendInLoop(const void* data, size_t len) {
         } else {
             nwrote = 0;
             if (errno != EWOULDBLOCK) {  // EWOULDBLOCK表示非阻塞情况下没有数据后的正常返回 等同于EAGAIN
-                Logger::instance().error("TcpConnection::sendInLoop write error");
+                LOG_ERROR("TcpConnection::sendInLoop write error");
                 if (errno == EPIPE || errno == ECONNRESET) {  // SIGPIPE RESET
                     faultError = true;
                 }
@@ -212,7 +212,7 @@ void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t coun
     bool faultError = false; // 错误的标志位
 
     if (state_ == kDisconnecting) { // 表示此时连接已经断开就不需要发送数据了
-        Logger::instance().error("disconnected, give up writing");
+        LOG_ERROR("disconnected, give up writing");
         return;
     }
     // 表示Channel第一次开始写数据或者outputBuffer缓冲区中没有数据
@@ -229,7 +229,7 @@ void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t coun
             }
         } else {  // bytesSent < 0
             if (errno != EWOULDBLOCK) {  // 如果是非阻塞没有数据返回错误这个是正常显现等同于EAGAIN，否则就异常情况
-                Logger::instance().error("TcpConnection::sendFileInLoop");
+                LOG_ERROR("TcpConnection::sendFileInLoop");
             }
             if (errno == EPIPE || errno == ECONNRESET) {
                 faultError = true;

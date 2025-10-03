@@ -1,3 +1,4 @@
+#include "LogMacros.h"
 #include "Logger.h"
 #include "TcpServer.h"
 
@@ -23,9 +24,9 @@ private:
     TcpServer server_;
     void onConnection(const TcpConnectionPtr& conn) {
         if (conn->connected()) {
-            Logger::instance().info("Connection Up : %s", conn->peerAddress().toIpPort().c_str());
+            LOG_INFO("Connection Up : %s", conn->peerAddress().toIpPort().c_str());
         } else {
-            Logger::instance().info("Connection closed [%s -> %s]", conn->localAddress().toIpPort().c_str(), conn->peerAddress().toIpPort().c_str());
+            LOG_INFO("Connection closed [%s -> %s]", conn->localAddress().toIpPort().c_str(), conn->peerAddress().toIpPort().c_str());
         }
     }
     void onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp time) {

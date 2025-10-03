@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <format>
 #include <fstream>
 #include <memory>
@@ -11,62 +12,36 @@
 
 #include "NonCopyable.h"
 
-// 日志级别
-enum class LogLevel {
-    TRACE,
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-    FATAL,
-};
+enum class LogLevel { TRACE, DEBUG, INFO, WARN, ERROR, FATAL };
 
 class Logger : NonCopyable {
+private:
+    void log(LogLevel level, std::string_view msg);
+
+    // loc 由宏在调用点注入；这里仅做拼装与早退
+    template <typename... Args>
+    void logWithLocImpl(LogLevel level, const std::source_location& loc, std::format_string<Args...> fmt, Args&&... args) {
+        if (level < logLevel_.load(std::memory_order_relaxed))
+            return;  // 低级别早退
+
+        std::string user = std::format(fmt, std::forward<Args>(args)...);
+        std::string head = formatLocCompact(loc);
+        log(level, std::format("{} {}", head, user));
+    }
+
 public:
-    // 单例获取
     static Logger& instance();
 
-    // 设置日志级别
     void setLogLevel(LogLevel level);
     LogLevel getLogLevel() const;
 
-    // 输出目标设置
     void setOutputToConsole(bool enable);
     void setOutputToFile(const std::string& filename);
 
-    // 核心接口
-    void log(LogLevel level, const std::string& msg);
-
-    // 模板化便捷接口（支持 std::format + source_location）
+    // 供宏调用：必须显式传 loc 才能拿到真实调用点
     template <typename... Args>
-    void logWithLocation(LogLevel level, std::string_view fmt, Args&&... args) {
-        logWithLocImpl(level, std::source_location::current(), fmt, std::forward<Args>(args)...);
-    }
-
-    // 便捷调用
-    template <typename... Args>
-    void trace(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::TRACE, fmt, std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void debug(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::DEBUG, fmt, std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void info(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::INFO, fmt, std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void warn(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::WARN, fmt, std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void error(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::ERROR, fmt, std::forward<Args>(args)...);
-    }
-    template <typename... Args>
-    void fatal(std::string_view fmt, Args&&... args) {
-        logWithLocation(LogLevel::FATAL, fmt, std::forward<Args>(args)...);
+    void logWithLocation(LogLevel level, const std::source_location& loc, std::format_string<Args...> fmt, Args&&... args) {
+        logWithLocImpl(level, loc, fmt, std::forward<Args>(args)...);
     }
 
 private:
@@ -75,15 +50,11 @@ private:
 
     static const char* levelToString(LogLevel level);
 
-    LogLevel logLevel_ = LogLevel::INFO;
+    // 将 [绝对路径/参数展开] → [短文件名:短函数名:行]
+    static std::string formatLocCompact(const std::source_location& loc);
+
+    std::atomic<LogLevel> logLevel_{LogLevel::INFO};
     mutable std::mutex mutex_;
     bool consoleOutput_ = true;
     std::unique_ptr<std::ofstream> fileOutput_;
-
-private:
-    template <typename... Args>
-    void logWithLocImpl(LogLevel level, const std::source_location& loc, std::string_view fmt, Args&&... args) {
-        auto formatted = std::vformat(fmt, std::make_format_args(args...));
-        log(level, std::format("[{}:{}:{}] {}", loc.file_name(), loc.function_name(), loc.line(), formatted));
-    }
 };

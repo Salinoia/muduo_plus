@@ -6,15 +6,15 @@
 
 #include "HttpRequest.h"
 #include "HttpResponse.h"
-#include "Logger.h"
+#include "LogMacros.h"
 
 CorsMiddleware::CorsMiddleware(const CorsConfig& config) : config_(config) {}
 
 void CorsMiddleware::before(HttpRequest& request) {
-    Logger::instance().debug("CorsMiddleware::before - Processing request");
+    LOG_DEBUG("CorsMiddleware::before - Processing request");
 
     if (request.method() == HttpRequest::Method::kOptions) {
-        Logger::instance().info("Processing CORS preflight request");
+        LOG_INFO("Processing CORS preflight request");
         HttpResponse response(false);
         handlePreflightRequest(request, response);
         throw response;
@@ -22,7 +22,7 @@ void CorsMiddleware::before(HttpRequest& request) {
 }
 
 void CorsMiddleware::after(HttpResponse& response) {
-    Logger::instance().debug("CorsMiddleware::after - Processing response");
+    LOG_DEBUG("CorsMiddleware::after - Processing response");
 
     if (!config_.allowedOrigins.empty()) {
         if (std::find(config_.allowedOrigins.begin(), config_.allowedOrigins.end(), "*") != config_.allowedOrigins.end()) {
@@ -42,14 +42,14 @@ void CorsMiddleware::handlePreflightRequest(const HttpRequest& request, HttpResp
     const std::string& origin = request.getHeader("Origin");
 
     if (!isOriginAllowed(origin)) {
-        Logger::instance().warn("Origin not allowed: " + origin);
+        LOG_WARN("Origin not allowed: {}", origin);
         response.setStatusCode(HttpResponse::k403Forbidden);
         return;
     }
 
     addCorsHeaders(response, origin);
     response.setStatusCode(HttpResponse::k204NoContent);
-    Logger::instance().info("Preflight request processed successfully");
+    LOG_INFO("Preflight request processed successfully");
 }
 
 void CorsMiddleware::addCorsHeaders(HttpResponse& response, const std::string& origin) {
@@ -70,9 +70,9 @@ void CorsMiddleware::addCorsHeaders(HttpResponse& response, const std::string& o
 
         response.addHeader("Access-Control-Max-Age", std::to_string(config_.maxAge));
 
-        Logger::instance().debug("CORS headers added successfully");
+        LOG_DEBUG("CORS headers added successfully");
     } catch (const std::exception& e) {
-        Logger::instance().error(std::string("Error adding CORS headers: ") + e.what());
+        LOG_ERROR("Error adding CORS headers: {}", e.what());
     }
 }
 
