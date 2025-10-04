@@ -1,9 +1,11 @@
 #include "Session.h"
 
+#include <chrono>
+
 #include "SessionManager.h"
 
-Session::Session(const std::string& sessionId, SessionManager* sessionManager, int maxAge) : sessionId_(sessionId), maxAge_(maxAge), sessionManager_(sessionManager) {
-    refresh();  // 初始化时设置过期时间
+Session::Session(const std::string& sessionId, std::weak_ptr<SessionManager> manager, int maxAge) : sessionId_(sessionId), maxAge_(maxAge), manager_(std::move(manager)) {
+    refresh();
 }
 
 // 检查会话是否已过期
@@ -16,27 +18,45 @@ void Session::refresh() {
     expiryTime_ = std::chrono::system_clock::now() + std::chrono::seconds(maxAge_);
 }
 
-// 设置会话数据
+// 设置键值
 void Session::setValue(const std::string& key, const std::string& value) {
-    data_[key] = value;
-    // 如果设置了manager，自动保存更改
-    if (sessionManager_) {
-        sessionManager_->updateSession(shared_from_this());
+    {
+        std::scoped_lock lock(mutex_);
+        data_[key] = value;
+    }
+
+    if (auto mgr = manager_.lock()) {
+        mgr->updateSession(shared_from_this());
     }
 }
 
-// 获取会话数据
+// 获取键值
 std::string Session::getValue(const std::string& key) const {
+    std::scoped_lock lock(mutex_);
     auto it = data_.find(key);
     return it != data_.end() ? it->second : std::string();
 }
 
-// 删除会话数据
+// 删除键
 void Session::remove(const std::string& key) {
-    data_.erase(key);
+    {
+        std::scoped_lock lock(mutex_);
+        data_.erase(key);
+    }
+
+    if (auto mgr = manager_.lock()) {
+        mgr->updateSession(shared_from_this());
+    }
 }
 
-// 清空会话数据
+// 清空所有数据
 void Session::clear() {
-    data_.clear();
+    {
+        std::scoped_lock lock(mutex_);
+        data_.clear();
+    }
+
+    if (auto mgr = manager_.lock()) {
+        mgr->updateSession(shared_from_this());
+    }
 }

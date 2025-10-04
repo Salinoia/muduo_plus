@@ -1,24 +1,25 @@
 #pragma once
 
+#include <any>
 #include <atomic>
 #include <memory>
 #include <string>
 
 #include "Buffer.h"
 #include "Callbacks.h"
+#include "EventLoop.h"
 #include "InetAddress.h"
 #include "NonCopyable.h"
 #include "Timestamp.h"
 
 class Channel;
-class EventLoop;
 class Socket;
 
 /**
- * TcpServer => Acceptor => 有一个新用户连接，通过accept函数拿到connfd
- * => TcpConnection设置回调 => 设置到Channel => Poller => Channel回调
- **/
-
+ * TcpConnection: 表示一次TCP连接（主动或被动）
+ * 生命周期由 shared_ptr<TcpConnection> 管理
+ * 在 Muduo 的多Reactor模型下，每个连接隶属于某个 subloop
+ */
 class TcpConnection : NonCopyable, public std::enable_shared_from_this<TcpConnection> {
 public:
     TcpConnection(EventLoop* loop, const std::string& nameArg, int sockfd, const InetAddress& localAddr, const InetAddress& peerAddr);
@@ -30,14 +31,19 @@ public:
     const InetAddress& peerAddress() const { return peerAddr_; }
 
     bool connected() const { return state_ == kConnected; }
+    bool disconnected() const { return state_ == kDisconnected; }
 
-    // 发送数据
+    // ========== 数据发送接口 ==========
     void send(const std::string& buf);
+    void send(const void* data, size_t len);
+    void send(Buffer* buf);  // 对齐 HttpServer.cpp 中的调用
+
     void sendFile(int fileDescriptor, off_t offset, size_t count);
 
-    // 关闭半连接
+    // 关闭写端（半关闭）
     void shutdown();
 
+    // ========== 回调注册接口 ==========
     void setConnectionCallback(const ConnectionCallback& cb) { connectionCallback_ = cb; }
     void setMessageCallback(const MessageCallback& cb) { messageCallback_ = cb; }
     void setWriteCompleteCallback(const WriteCompleteCallback& cb) { writeCompleteCallback_ = cb; }
@@ -47,62 +53,67 @@ public:
         highWaterMark_ = highWaterMark;
     }
 
-    // 连接建立
-    void connectEstablished();
-    // 连接销毁
-    void connectDestroyed();
+    // ========== 生命周期接口 ==========
+    void connectEstablished();  // 由 TcpServer 在新连接 accept 后调用
+    void connectDestroyed();  // 由 TcpServer 在连接关闭时调用
+
+    // ========== 用户上下文存取（支持 TLS / HTTP 复用）==========
+    void setContext(const std::any& context) { context_ = context; }
+    const std::any& getContext() const { return context_; }
+    std::any& getMutableContext() { return context_; }
+    void clearContext() { context_.reset(); }
 
 private:
     enum StateE {
-        kDisconnected,  // 已经断开连接
+        kDisconnected,  // 已断开
         kConnecting,  // 正在连接
         kConnected,  // 已连接
-        kDisconnecting  // 正在断开连接
+        kDisconnecting  // 正在断开
     };
-    // ==== 核心状态与组件 ====
-    EventLoop* loop_;  // 若为多Reactor 该loop_指向subloop；若为单Reactor 该loop_指向baseloop；
-    std::atomic_int state_;  // 连接状态，与loop_强相关
-    bool reading_;  // 连接是否在监听读事件
 
-    // ==== 网络资源 ====
-    // Socket Channel
-    // 和Acceptor类似    Acceptor => mainloop    TcpConnection => subloop
-    std::unique_ptr<Socket> socket_;  // TCP套接字（核心资源）
-    std::unique_ptr<Channel> channel_;  // 事件通道
+    void setState(StateE s) { state_ = s; }
 
-    // ==== 地址信息 ====
-    const std::string name_;  // 连接名称
+    // ========== 内部事件回调 ==========
+    void handleRead(Timestamp receiveTime);
+    void handleWrite();
+    void handleClose();
+    void handleError();
+
+    // ========== 内部执行函数 ==========
+    void sendInLoop(const void* data, size_t len);
+    void sendFileInLoop(int fileDescriptor, off_t offset, size_t count);
+    void shutdownInLoop();
+
+private:
+    EventLoop* loop_;  // 所属事件循环（线程）
+    std::atomic_int state_;  // 状态机
+    bool reading_;  // 是否监听读事件
+
+    std::unique_ptr<Socket> socket_;  // 封装的 socket
+    std::unique_ptr<Channel> channel_;  // 绑定事件通道
+
+    const std::string name_;  // 连接名
     const InetAddress localAddr_;  // 本地地址
     const InetAddress peerAddr_;  // 对端地址
 
-    // ==== 数据缓冲区 ====
-    Buffer inputBuffer_;               // 接收缓冲区（高频访问）
-    Buffer outputBuffer_;              // 发送缓冲区
+    Buffer inputBuffer_;  // 输入缓冲
+    Buffer outputBuffer_;  // 输出缓冲
 
-    // ==== 水位控制 ====
-    size_t highWaterMark_;             // 高水位阈值
-    HighWaterMarkCallback highWaterMarkCallback_;// 高水位回调
+    size_t highWaterMark_;  // 高水位阈值
+    HighWaterMarkCallback highWaterMarkCallback_;
 
-    // ==== 用户回调 ==== 
-    // 用户通过写入TcpServer注册 TcpServer再将注册的回调传递给TcpConnection TcpConnection再将回调注册到Channel中
-    ConnectionCallback connectionCallback_;  // 有新连接时的回调
-    MessageCallback messageCallback_;  // 有读写消息时的回调
-    WriteCompleteCallback writeCompleteCallback_;  // 消息发送完成以后的回调
-    CloseCallback closeCallback_;  // 关闭连接的回调
+    ConnectionCallback connectionCallback_;
+    MessageCallback messageCallback_;
+    WriteCompleteCallback writeCompleteCallback_;
+    CloseCallback closeCallback_;
 
-    // ==== 内部方法 ====
-    void setState(StateE state) { state_ = state; }
-    void handleRead(Timestamp receiveTime);
-    void handleWrite();  // 处理写事件
-    void handleClose();
-    void handleError();
-    void sendInLoop(const void* data, size_t len);
-    void shutdownInLoop();
-    void sendFileInLoop(int fileDescriptor, off_t offset, size_t count);
+    // 任意类型上下文，支持 TLSConnection / HttpContext / 用户对象
+    std::any context_;
 };
+
 namespace std {
 template <>
 struct formatter<TcpConnection*, char> : formatter<void*, char> {
     auto format(TcpConnection* p, auto& ctx) const { return formatter<void*, char>::format(static_cast<void*>(p), ctx); }
 };
-}
+}  // namespace std

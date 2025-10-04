@@ -1,79 +1,122 @@
 #include "TcpConnection.h"
 
-#include <sys/sendfile.h> // for sendfile
+#include <errno.h>
+#include <sys/sendfile.h>  // for sendfile
 
 #include "Channel.h"
 #include "EventLoop.h"
 #include "LogMacros.h"
 #include "Socket.h"
 
+struct PendingFile {
+    int    fd = -1;
+    off_t  offset = 0;
+    size_t remaining = 0;
+    bool   active = false;
+};
+PendingFile pendingFile_;
 static EventLoop* CheckLoopNotNull(EventLoop* loop) {
     if (loop == nullptr) {
         LOG_FATAL("mainLoop is null!");
     }
     return loop;
 }
+
 TcpConnection::TcpConnection(EventLoop* loop, const std::string& nameArg, int sockfd, const InetAddress& localAddr, const InetAddress& peerAddr) :
     loop_(CheckLoopNotNull(loop)),
     name_(nameArg),
     state_(kConnecting),
     reading_(true),
-    socket_(new Socket(sockfd)),
-    channel_(new Channel(loop, sockfd)),
+    socket_(std::make_unique<Socket>(sockfd)),
+    channel_(std::make_unique<Channel>(loop, sockfd)),
     localAddr_(localAddr),
     peerAddr_(peerAddr),
-    highWaterMark_(64 * 1024 * 1024)  // 64M
+    highWaterMark_(64 * 1024 * 1024)  // 64MB
 {
-    channel_->setReadCallback([this](Timestamp t) { this->handleRead(t); });
-    channel_->setWriteCallback([this]() { this->handleWrite(); });
-    channel_->setCloseCallback([this]() { this->handleClose(); });
-    channel_->setErrorCallback([this]() { this->handleError(); });
-    LOG_TRACE("TcpConnection::ctor[{}] at fd = {}", name_, sockfd);
+    channel_->setReadCallback([this](Timestamp t) { handleRead(t); });
+    channel_->setWriteCallback([this]() { handleWrite(); });
+    channel_->setCloseCallback([this]() { handleClose(); });
+    channel_->setErrorCallback([this]() { handleError(); });
+
     socket_->setKeepAlive(true);
+    LOG_TRACE("TcpConnection::ctor [{}] fd = {}", name_, sockfd);
 }
 
 TcpConnection::~TcpConnection() {
-    LOG_INFO("TcpConnection::dtor[{}] at fd = {} state = {}", name_, channel_->getFd(), state_.load());
+    LOG_INFO("TcpConnection::dtor [{}] fd = {} state = {}", name_, channel_->getFd(), state_.load());
 }
 
+// ===================== send 系列 =====================
+
 void TcpConnection::send(const std::string& buf) {
-    if (state_ == kConnected) {
-        if (loop_->isInLoopThread()) {  // 对于单个reactor的情况 用户调用conn->send时 loop_即为当前线程
-            sendInLoop(buf.c_str(), buf.size());
-        } else {
-            loop_->runInLoop([this, buf]() {
-                if (state_ == kConnected) {  // 再次检查状态，因为状态可能在排队时改变
-                    sendInLoop(buf.c_str(), buf.size());
-                }
-            });
-        }
+    send(buf.data(), buf.size());
+}
+
+void TcpConnection::send(const void* data, size_t len) {
+    if (state_ != kConnected)
+        return;
+
+    if (loop_->isInLoopThread()) {
+        sendInLoop(data, len);
+    } else {
+        // 拷贝数据，防止原缓冲释放
+        std::string copy(static_cast<const char*>(data), len);
+        loop_->runInLoop([self = shared_from_this(), copy]() {
+            if (self->state_ == kConnected) {
+                self->sendInLoop(copy.data(), copy.size());
+            }
+        });
+    }
+}
+
+// 上层调用的 Buffer* 版本
+void TcpConnection::send(Buffer* buf) {
+    if (!buf || buf->readableBytes() == 0)
+        return;
+    if (state_ != kConnected)
+        return;  // 阻止误清空
+
+    if (loop_->isInLoopThread()) {
+        sendInLoop(buf->peek(), buf->readableBytes());
+        buf->retrieveAll();
+    } else {
+        std::string copy(buf->peek(), buf->readableBytes());
+        buf->retrieveAll();
+        auto self = shared_from_this();
+        loop_->runInLoop([self, copy = std::move(copy)]() {
+            if (self->state_ == kConnected)
+                self->sendInLoop(copy.data(), copy.size());
+        });
     }
 }
 
 void TcpConnection::sendFile(int fileDescriptor, off_t offset, size_t count) {
-    if (connected()) {
-        if (loop_->isInLoopThread()) {  // 是否位于当前循环
-            sendFileInLoop(fileDescriptor, offset, count);
-        } else {  // 如果不是，则唤醒运行这个TcpConnection的线程执行Loop循环
-            loop_->runInLoop([self = shared_from_this(), fileDescriptor, offset, count]() { self->sendFileInLoop(fileDescriptor, offset, count); });
-        }
+    if (state_ != kConnected)
+        return;
+
+    if (loop_->isInLoopThread()) {
+        sendFileInLoop(fileDescriptor, offset, count);
     } else {
-        LOG_ERROR("TcpConnection::sendFile : not connected");
+        loop_->runInLoop([self = shared_from_this(), fileDescriptor, offset, count]() {
+            if (self->state_ == kConnected)
+                self->sendFileInLoop(fileDescriptor, offset, count);
+        });
     }
 }
 
 void TcpConnection::shutdown() {
     if (state_ == kConnected) {
         setState(kDisconnecting);
-        loop_->runInLoop([this]() { this->shutdownInLoop(); });
+        loop_->runInLoop([self = shared_from_this()] { self->shutdownInLoop(); });
     }
 }
+
+// ===================== 生命周期管理 =====================
 
 void TcpConnection::connectEstablished() {
     setState(kConnected);
     channel_->tie(shared_from_this());
-    channel_->enableReading();  // 向poller注册channel的EPOLLIN读事件
-    // 新连接建立 执行回调
+    channel_->enableReading();  // 注册EPOLLIN事件
     connectionCallback_(shared_from_this());
 }
 
@@ -81,12 +124,12 @@ void TcpConnection::connectDestroyed() {
     if (state_ == kConnected) {
         setState(kDisconnected);
         channel_->disableAll();
-        connectionCallback_(shared_from_this());  // 将 channel 中的事件从 poller 中删除
     }
-    channel_->remove();  // 将 channel 从 poller 中删除
+    channel_->remove();
 }
 
-// 读是相对服务器而言的 当对端客户端有数据到达 服务器端检测到 EPOLL_IN 就会触发该fd上的回调 handleRead取读走对端发来的数据
+// ===================== 事件回调 =====================
+
 void TcpConnection::handleRead(Timestamp receiveTime) {
     int saveErrno = 0;
     ssize_t n = inputBuffer_.readFd(channel_->getFd(), &saveErrno);
@@ -96,31 +139,69 @@ void TcpConnection::handleRead(Timestamp receiveTime) {
         handleClose();
     } else {
         errno = saveErrno;
-        LOG_ERROR("TcpConnection::handleRead");
+        LOG_ERROR("TcpConnection::handleRead() errno = {}", errno);
         handleError();
     }
 }
-
 void TcpConnection::handleWrite() {
-    if (channel_->isWriting()) {
-        int saveErrno = 0;
-        ssize_t n = outputBuffer_.writeFd(channel_->getFd(), &saveErrno);
-        if (n > 0) {
-            outputBuffer_.retrieve(n);  // 从缓冲区读取 reabable 区域数据移动到 readIndex 下标
-            if (outputBuffer_.readableBytes() == 0) {
-                channel_->disableWriting();
-                if (writeCompleteCallback_) {
-                    loop_->queueInLoop([self = shared_from_this()] { self->writeCompleteCallback_(self); });
+    // 先处理待续传文件
+    if (pendingFile_.active) {
+        ssize_t n = ::sendfile(socket_->getSocketFd(), pendingFile_.fd, &pendingFile_.offset, pendingFile_.remaining);
+        if (n >= 0) {
+            pendingFile_.remaining -= static_cast<size_t>(n);
+            if (pendingFile_.remaining == 0) {
+                pendingFile_.active = false;
+                // 文件发完后，继续走缓冲区逻辑
+                if (writeCompleteCallback_ && outputBuffer_.readableBytes() == 0) {
+                    auto self = shared_from_this();
+                    loop_->queueInLoop([self] {
+                        if (self->writeCompleteCallback_)
+                            self->writeCompleteCallback_(self);
+                    });
                 }
-                if (state_ == kDisconnecting) {
-                    shutdownInLoop();
-                }
+            } else {
+                channel_->enableWriting();  // 继续等待下一次可写
+                return;
             }
         } else {
-            LOG_ERROR("TcpConnection::handleWrite");
+            if (errno == EWOULDBLOCK) {
+                channel_->enableWriting();
+                return;
+            }
+            if (errno == EPIPE || errno == ECONNRESET) {
+                handleClose();
+                return;
+            }
+            LOG_ERROR("TcpConnection::handleWrite sendfile errno = {}", errno);
+            pendingFile_.active = false;  // 降级：停止续传
+        }
+    }
+
+    // 再处理内存缓冲
+    if (!channel_->isWriting()) {
+        LOG_WARN("handleWrite called but not writing fd = {}", channel_->getFd());
+        return;
+    }
+    int saveErrno = 0;
+    ssize_t n = outputBuffer_.writeFd(channel_->getFd(), &saveErrno);
+    if (n > 0) {
+        outputBuffer_.retrieve(n);
+        if (outputBuffer_.readableBytes() == 0) {
+            channel_->disableWriting();
+            if (writeCompleteCallback_) {
+                auto self = shared_from_this();
+                loop_->queueInLoop([self] {
+                    if (self->writeCompleteCallback_)
+                        self->writeCompleteCallback_(self);
+                });
+            }
+            if (state_ == kDisconnecting) {
+                shutdownInLoop();
+            }
         }
     } else {
-        LOG_ERROR("TcpConnection fd = {} is down, no more writing operations", channel_->getFd());
+        errno = saveErrno;
+        LOG_ERROR("TcpConnection::handleWrite() errno = {}", errno);
     }
 }
 
@@ -129,40 +210,43 @@ void TcpConnection::handleClose() {
     setState(kDisconnected);
     channel_->disableAll();
 
-    TcpConnectionPtr connPtr(shared_from_this());
-    connectionCallback_(connPtr);  // 连接回调
-    closeCallback_(connPtr);  // 执行关闭连接的回调 执行的是 TcpServer::removeConnection 回调方法，必须最后执行
+    auto self = shared_from_this();
+    // 不要再次调用 connectionCallback_，防止上层重复处理
+    if (closeCallback_)
+        closeCallback_(self);
 }
 
 void TcpConnection::handleError() {
-    int optval;
+    int optval = 0;
     socklen_t optlen = sizeof optval;
     int err = 0;
-    if (::getsockopt(channel_->getFd(), SOL_SOCKET, SO_ERROR, &optval, &optlen)) {
+    if (::getsockopt(channel_->getFd(), SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0)
         err = errno;
-    } else {
+    else
         err = optval;
-    }
-    LOG_ERROR("TcpConnection::handleError name: {} - SO_ERROR: {}", name_, err);
+
+    LOG_ERROR("TcpConnection::handleError name = {} SO_ERROR = {}", name_, err);
 }
 
+// ===================== 内部逻辑 =====================
+
 void TcpConnection::sendInLoop(const void* data, size_t len) {
+    if (state_ == kDisconnected) {
+        LOG_WARN("sendInLoop on disconnected connection [{}]", name_);
+        return;
+    }
+
     ssize_t nwrote = 0;
     size_t remaining = len;
     bool faultError = false;
 
-    if (state_ == kDisconnected) {
-        LOG_ERROR("Disconnected, give up writing operations.");
-        // return;
-    }
-    // 第一次开始写数据或缓冲区没有带发送数据
+    // 尝试直接发送
     if (!channel_->isWriting() && outputBuffer_.readableBytes() == 0) {
-        // nwrote = ::write(channel_->getFd(), data, len); // 如果对端关闭连接，此处调用write()会触发SIGPIPE,默认终止程序
         nwrote = ::send(channel_->getFd(), data, len, MSG_NOSIGNAL);
         if (nwrote >= 0) {
             remaining = len - nwrote;
-            auto self = shared_from_this();
             if (remaining == 0 && writeCompleteCallback_) {
+                auto self = shared_from_this();
                 loop_->queueInLoop([self]() {
                     if (self->writeCompleteCallback_)
                         self->writeCompleteCallback_(self);
@@ -170,78 +254,77 @@ void TcpConnection::sendInLoop(const void* data, size_t len) {
             }
         } else {
             nwrote = 0;
-            if (errno != EWOULDBLOCK) {  // EWOULDBLOCK表示非阻塞情况下没有数据后的正常返回 等同于EAGAIN
-                LOG_ERROR("TcpConnection::sendInLoop write error");
-                if (errno == EPIPE || errno == ECONNRESET) {  // SIGPIPE RESET
+            if (errno != EWOULDBLOCK) {
+                if (errno == EPIPE || errno == ECONNRESET)
                     faultError = true;
-                }
+                LOG_ERROR("TcpConnection::sendInLoop write error: {}", errno);
             }
         }
     }
-    // 说明当前这一次write并没有把数据全部发送出去 剩余的数据需要保存到缓冲区当中
+
+    // 若未发完，存入缓冲区等待EPOLLOUT
     if (!faultError && remaining > 0) {
-        ssize_t oldLen = outputBuffer_.readableBytes();
-        if (oldLen + remaining > oldLen) {
-            if (oldLen + remaining >= highWaterMark_ && oldLen < highWaterMark_ && highWaterMarkCallback_) {
-                auto self = shared_from_this();
-                loop_->queueInLoop([self, oldLen, remaining] {
-                    self->highWaterMarkCallback_(self, oldLen + remaining);
-                });
-            }
-            outputBuffer_.append(static_cast<const char*>(data) + nwrote, remaining);
+        size_t oldLen = outputBuffer_.readableBytes();
+        if (oldLen + remaining >= highWaterMark_ && oldLen < highWaterMark_ && highWaterMarkCallback_) {
+            auto self = shared_from_this();
+            loop_->queueInLoop([self, total = oldLen + remaining]() { self->highWaterMarkCallback_(self, total); });
         }
-        if (!channel_->isWriting()) { // 这里需要注册channel的写事件 否则poller不会给channel通知epollout
+
+        outputBuffer_.append(static_cast<const char*>(data) + nwrote, remaining);
+        if (!channel_->isWriting()) {
             channel_->enableWriting();
         }
     }
 
-    if (faultError) {
-        handleClose(); // 主动关闭连接
-    }
+    if (faultError)
+        handleClose();
 }
 
 void TcpConnection::shutdownInLoop() {
-    if (!channel_->isWriting()){
+    if (!channel_->isWriting()) {
         socket_->shutdownWrite();
     }
 }
 
 void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t count) {
-    ssize_t bytesSent = 0; // 发送了多少字节数
-    size_t remaining = count; // 还要多少数据要发送
-    bool faultError = false; // 错误的标志位
+    if (state_ != kConnected)
+        return;
 
-    if (state_ == kDisconnecting) { // 表示此时连接已经断开就不需要发送数据了
-        LOG_ERROR("disconnected, give up writing");
+    // 若缓冲里还有待发数据，优先让缓冲走完，再发文件
+    if (outputBuffer_.readableBytes() > 0 || channel_->isWriting()) {
+        pendingFile_ = {fileDescriptor, offset, count, true};
+        channel_->enableWriting();
         return;
     }
-    // 表示Channel第一次开始写数据或者outputBuffer缓冲区中没有数据
-    if (!channel_->isWriting() && outputBuffer_.readableBytes() == 0) {
-        bytesSent = sendfile(socket_->getSocketFd(), fileDescriptor, &offset, remaining);
-        if (bytesSent >= 0) {
-            remaining -= bytesSent;
-            if (remaining == 0 && writeCompleteCallback_) {
-                // remaining为0意味着数据正好全部发送完，就不需要给其设置写事件的监听。
+
+    ssize_t n = ::sendfile(socket_->getSocketFd(), fileDescriptor, &offset, count);
+    if (n >= 0) {
+        size_t remaining = count - static_cast<size_t>(n);
+        if (remaining == 0) {
+            if (writeCompleteCallback_) {
                 auto self = shared_from_this();
-                loop_->queueInLoop([self]() {
-                    self->writeCompleteCallback_(self);
+                loop_->queueInLoop([self] {
+                    if (self->writeCompleteCallback_)
+                        self->writeCompleteCallback_(self);
                 });
             }
-        } else {  // bytesSent < 0
-            if (errno != EWOULDBLOCK) {  // 如果是非阻塞没有数据返回错误这个是正常显现等同于EAGAIN，否则就异常情况
-                LOG_ERROR("TcpConnection::sendFileInLoop");
-            }
-            if (errno == EPIPE || errno == ECONNRESET) {
-                faultError = true;
-            }
+            return;
         }
+        // 未发完：注册写事件，后续在 handleWrite() 继续
+        pendingFile_ = {fileDescriptor, offset, remaining, true};
+        channel_->enableWriting();
+        return;
     }
-    // 处理剩余数据
-    if (!faultError && remaining > 0) {
-        // 继续发送剩余数据
-        auto self = shared_from_this();
-        loop_->queueInLoop([self, fileDescriptor, offset, remaining]() {
-            self->sendFileInLoop(fileDescriptor, offset, remaining);
-        });
+
+    if (errno == EWOULDBLOCK) {
+        pendingFile_ = {fileDescriptor, offset, count, true};
+        channel_->enableWriting();
+        return;
+    }
+
+    if (errno == EPIPE || errno == ECONNRESET) {
+        handleClose();
+    } else {
+        LOG_ERROR("TcpConnection::sendFileInLoop errno = {}", errno);
     }
 }

@@ -1,87 +1,98 @@
 #include "CorsMiddleware.h"
 
 #include <algorithm>
-#include <iostream>
-#include <sstream>
 
-#include "HttpRequest.h"
-#include "HttpResponse.h"
-#include "LogMacros.h"
+CorsMiddleware::CorsMiddleware(CorsConfig config) noexcept : config_(std::move(config)) {}
 
-CorsMiddleware::CorsMiddleware(const CorsConfig& config) : config_(config) {}
+bool CorsMiddleware::handle(HttpRequest& request, HttpResponse& response) {
+    const std::string origin = request.getHeader("Origin");
 
-void CorsMiddleware::before(HttpRequest& request) {
-    LOG_DEBUG("CorsMiddleware::before - Processing request");
+    // 1) 非跨域请求（无 Origin）：直接放行
+    if (origin.empty()) {
+        return true;
+    }
 
-    if (request.method() == HttpRequest::Method::kOptions) {
-        LOG_INFO("Processing CORS preflight request");
-        HttpResponse response(false);
+    // 2) 非白名单来源：拒绝并中断
+    if (!isOriginAllowed(origin)) {
+        response.setStatusCode(HttpResponse::k403Forbidden);
+        response.setStatusMessage("Forbidden");
+        response.setContentType("text/plain; charset=utf-8");
+        response.setBody("CORS origin denied");
+        return false;
+    }
+
+    // 3) 预检请求（OPTIONS）：返回 200 + 预检响应头并中断
+    if (request.method() == HttpRequest::kOptions) {
         handlePreflightRequest(request, response);
-        throw response;
+        return false;
     }
+
+    // 4) 普通跨域请求：添加 CORS 头并继续链条
+    addCorsHeaders(response, origin);
+    return true;
 }
 
-void CorsMiddleware::after(HttpResponse& response) {
-    LOG_DEBUG("CorsMiddleware::after - Processing response");
-
-    if (!config_.allowedOrigins.empty()) {
-        if (std::find(config_.allowedOrigins.begin(), config_.allowedOrigins.end(), "*") != config_.allowedOrigins.end()) {
-            addCorsHeaders(response, "*");
-        } else {
-            addCorsHeaders(response, config_.allowedOrigins[0]);
-        }
-    }
-}
-
-bool CorsMiddleware::isOriginAllowed(const std::string& origin) const {
-    return config_.allowedOrigins.empty() || std::find(config_.allowedOrigins.begin(), config_.allowedOrigins.end(), "*") != config_.allowedOrigins.end()
-           || std::find(config_.allowedOrigins.begin(), config_.allowedOrigins.end(), origin) != config_.allowedOrigins.end();
+bool CorsMiddleware::isOriginAllowed(const std::string& origin) const noexcept {
+    if (config_.allowAllOrigins)
+        return true;
+    return std::find(config_.allowedOrigins.begin(), config_.allowedOrigins.end(), origin) != config_.allowedOrigins.end();
 }
 
 void CorsMiddleware::handlePreflightRequest(const HttpRequest& request, HttpResponse& response) {
-    const std::string& origin = request.getHeader("Origin");
+    response.setStatusCode(HttpResponse::k200Ok);
+    response.setStatusMessage("OK");
 
-    if (!isOriginAllowed(origin)) {
-        LOG_WARN("Origin not allowed: {}", origin);
-        response.setStatusCode(HttpResponse::k403Forbidden);
-        return;
+    const std::string origin = request.getHeader("Origin");
+    addCorsHeaders(response, origin);
+
+    // 允许的方法
+    if (!config_.allowedMethods.empty()) {
+        response.addHeader("Access-Control-Allow-Methods", join(config_.allowedMethods, ", "));
     }
 
-    addCorsHeaders(response, origin);
-    response.setStatusCode(HttpResponse::k204NoContent);
-    LOG_INFO("Preflight request processed successfully");
+    // 允许的请求头
+    if (!config_.allowedHeaders.empty()) {
+        response.addHeader("Access-Control-Allow-Headers", join(config_.allowedHeaders, ", "));
+    } else {
+        // 若未配置，尽量回显请求头（可按需保守关闭）
+        const std::string reqHdrs = request.getHeader("Access-Control-Request-Headers");
+        if (!reqHdrs.empty()) {
+            response.addHeader("Access-Control-Allow-Headers", reqHdrs);
+        }
+    }
+
+    // 预检缓存时间
+    if (config_.maxAge > 0) {
+        response.addHeader("Access-Control-Max-Age", std::to_string(config_.maxAge));
+    }
+
+    response.setBody("");
 }
 
 void CorsMiddleware::addCorsHeaders(HttpResponse& response, const std::string& origin) {
-    try {
+    // allowAllOrigins 且 允许凭证 时，不能用 "*"，应回显具体 Origin
+    if (config_.allowAllOrigins && !config_.allowCredentials) {
+        response.addHeader("Access-Control-Allow-Origin", "*");
+    } else {
         response.addHeader("Access-Control-Allow-Origin", origin);
+        response.addHeader("Vary", "Origin");  // 告诉缓存：按 Origin 区分
+    }
 
-        if (config_.allowCredentials) {
-            response.addHeader("Access-Control-Allow-Credentials", "true");
-        }
+    if (config_.allowCredentials) {
+        response.addHeader("Access-Control-Allow-Credentials", "true");
+    }
 
-        if (!config_.allowedMethods.empty()) {
-            response.addHeader("Access-Control-Allow-Methods", join(config_.allowedMethods, ", "));
-        }
-
-        if (!config_.allowedHeaders.empty()) {
-            response.addHeader("Access-Control-Allow-Headers", join(config_.allowedHeaders, ", "));
-        }
-
-        response.addHeader("Access-Control-Max-Age", std::to_string(config_.maxAge));
-
-        LOG_DEBUG("CORS headers added successfully");
-    } catch (const std::exception& e) {
-        LOG_ERROR("Error adding CORS headers: {}", e.what());
+    if (!config_.exposedHeaders.empty()) {
+        response.addHeader("Access-Control-Expose-Headers", join(config_.exposedHeaders, ", "));
     }
 }
 
-std::string CorsMiddleware::join(const std::vector<std::string>& strings, const std::string& delimiter) {
-    std::ostringstream result;
-    for (size_t i = 0; i < strings.size(); ++i) {
-        if (i > 0)
-            result << delimiter;
-        result << strings[i];
+std::string CorsMiddleware::join(const std::vector<std::string>& v, const std::string& delim) {
+    std::string result;
+    for (size_t i = 0; i < v.size(); ++i) {
+        result += v[i];
+        if (i + 1 < v.size())
+            result += delim;
     }
-    return result.str();
+    return result;
 }

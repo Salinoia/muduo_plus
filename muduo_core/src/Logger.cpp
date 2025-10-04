@@ -101,6 +101,7 @@ void Logger::log(LogLevel level, std::string_view msg) {
 
     std::ostringstream oss;
     const auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
 #if defined(_WIN32)
@@ -109,7 +110,7 @@ void Logger::log(LogLevel level, std::string_view msg) {
     localtime_r(&t, &tm);
 #endif
 
-    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [tid:0x" << std::hex << std::this_thread::get_id() << "] "
+    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << ms.count() << " [tid:0x" << std::hex << std::this_thread::get_id() << "] "
         << "[" << levelToString(level) << "] " << msg << "\n";
 
     std::string out = oss.str();
