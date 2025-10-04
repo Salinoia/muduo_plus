@@ -70,7 +70,7 @@ void EventLoop::loop() {
         }
         doPendingFunctors();
     }
-    LOG_INFO("EventLoop {} stop looping\n", this);
+    LOG_INFO("EventLoop {} stop looping", this);
     looping_ = false;
 }
 

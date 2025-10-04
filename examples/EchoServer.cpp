@@ -24,9 +24,9 @@ private:
     TcpServer server_;
     void onConnection(const TcpConnectionPtr& conn) {
         if (conn->connected()) {
-            LOG_INFO("Connection Up : %s", conn->peerAddress().toIpPort().c_str());
+            LOG_INFO("Connection Up : {}", conn->peerAddress().toIpPort().c_str());
         } else {
-            LOG_INFO("Connection closed [%s -> %s]", conn->localAddress().toIpPort().c_str(), conn->peerAddress().toIpPort().c_str());
+            LOG_INFO("Connection closed [{} -> {}]", conn->localAddress().toIpPort().c_str(), conn->peerAddress().toIpPort().c_str());
         }
     }
     void onMessage(const TcpConnectionPtr& conn, Buffer* buf, Timestamp time) {
@@ -48,6 +48,7 @@ private:
 
 int main() {
     Logger::instance().setLogLevel(LogLevel::INFO);
+    Logger::instance().setOutputToFileAsync("async:server.log");
     EventLoop loop;
     InetAddress addr("127.0.0.1", 8000);
     auto server = EchoServer::create(&loop, addr, "EchoServer");

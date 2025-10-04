@@ -14,6 +14,7 @@
 
 enum class LogLevel { TRACE, DEBUG, INFO, WARN, ERROR, FATAL };
 
+class AsyncFileSink;
 class Logger : NonCopyable {
 private:
     void log(LogLevel level, std::string_view msg);
@@ -37,6 +38,7 @@ public:
 
     void setOutputToConsole(bool enable);
     void setOutputToFile(const std::string& filename);
+    void setOutputToFileAsync(const std::string& filename);
 
     // 供宏调用：必须显式传 loc 才能拿到真实调用点
     template <typename... Args>
@@ -57,4 +59,5 @@ private:
     mutable std::mutex mutex_;
     bool consoleOutput_ = true;
     std::unique_ptr<std::ofstream> fileOutput_;
+    std::unique_ptr<AsyncFileSink> asyncSink_;
 };

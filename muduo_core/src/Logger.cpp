@@ -7,6 +7,29 @@
 #include <sstream>
 #include <thread>
 
+#include "AsyncFileSink.h"
+namespace {
+std::string_view basename_view(std::string_view path) {
+    const size_t pos = path.find_last_of("/\\");
+    return (pos == std::string_view::npos) ? path : path.substr(pos + 1);
+}
+
+std::string_view unqual_func(std::string_view fn) {
+    // 去掉命名空间/类限定
+    const size_t scope = fn.rfind("::");
+    if (scope != std::string_view::npos)
+        fn = fn.substr(scope + 2);
+    // 去掉参数列表
+    const size_t paren = fn.find('(');
+    if (paren != std::string_view::npos)
+        fn = fn.substr(0, paren);
+    // 去掉模板实参展开（只保留名，不保留 <...>）
+    const size_t angle = fn.find('<');
+    if (angle != std::string_view::npos)
+        fn = fn.substr(0, angle);
+    return fn;
+}
+};  // namespace
 Logger& Logger::instance() {
     static Logger globalLogger;
     return globalLogger;
@@ -15,6 +38,11 @@ Logger& Logger::instance() {
 Logger::Logger() : consoleOutput_(true) {}
 
 Logger::~Logger() {
+    if (asyncSink_) {
+        asyncSink_->flush_all_now();  // 确保残留日志落地
+        asyncSink_->stop();
+        asyncSink_.reset();
+    }
     if (fileOutput_)
         fileOutput_->close();
 }
@@ -34,33 +62,31 @@ void Logger::setOutputToConsole(bool enable) {
 
 void Logger::setOutputToFile(const std::string& filename) {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    asyncSink_.reset();
+
     fileOutput_ = std::make_unique<std::ofstream>(filename, std::ios::app);
     if (!fileOutput_ || !fileOutput_->good()) {
         fileOutput_.reset();
         consoleOutput_ = true;
         std::cerr << "Logger: failed to open file, fallback to console\n";
+    } 
+    consoleOutput_ = true; // 保持双通道输出  
+}
+
+void Logger::setOutputToFileAsync(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    fileOutput_.reset();
+
+    try {
+        asyncSink_ = std::make_unique<AsyncFileSink>(filename);
+        consoleOutput_ = true;
+    } catch (const std::exception& e) {
+        asyncSink_.reset();
+        consoleOutput_ = true;
+        std::cerr << "Logger: failed to open async file (" << e.what() << "), fallback to console\n";
     }
-}
-
-static inline std::string_view basename_view(std::string_view path) {
-    const size_t pos = path.find_last_of("/\\");
-    return (pos == std::string_view::npos) ? path : path.substr(pos + 1);
-}
-
-static inline std::string_view unqual_func(std::string_view fn) {
-    // 去掉命名空间/类限定
-    const size_t scope = fn.rfind("::");
-    if (scope != std::string_view::npos)
-        fn = fn.substr(scope + 2);
-    // 去掉参数列表
-    const size_t paren = fn.find('(');
-    if (paren != std::string_view::npos)
-        fn = fn.substr(0, paren);
-    // 去掉模板实参展开（只保留名，不保留 <...>）
-    const size_t angle = fn.find('<');
-    if (angle != std::string_view::npos)
-        fn = fn.substr(0, angle);
-    return fn;
 }
 
 std::string Logger::formatLocCompact(const std::source_location& loc) {
@@ -83,10 +109,23 @@ void Logger::log(LogLevel level, std::string_view msg) {
     localtime_r(&t, &tm);
 #endif
 
-    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [tid:" << std::hash<std::thread::id>()(std::this_thread::get_id()) << "] "
+    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [tid:0x" << std::hex << std::this_thread::get_id() << "] "
         << "[" << levelToString(level) << "] " << msg << "\n";
 
-    const std::string out = oss.str();
+    std::string out = oss.str();
+
+    if (asyncSink_) {
+        if (consoleOutput_) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            std::cout << out;
+        }
+        asyncSink_->submit(std::move(out));
+        if (level == LogLevel::FATAL) {
+            asyncSink_->flush_all_now();
+            std::abort();
+        }
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (consoleOutput_)
