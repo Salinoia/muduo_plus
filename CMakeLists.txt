@@ -15,5 +15,5 @@ set(LIBS pthread)
 #添加子目录
 add_subdirectory(muduo_core)
 add_subdirectory(http_server)
+add_subdirectory(db)
 add_subdirectory(examples)
-
