@@ -1,5 +1,5 @@
 #设置最低版本和项目名称
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 project(muduo-core)
 
 #设置全局的 C++ 标准
@@ -16,4 +16,6 @@ set(LIBS pthread)
 add_subdirectory(muduo_core)
 add_subdirectory(http_server)
 add_subdirectory(db)
+add_subdirectory(cache)
+add_subdirectory(mq)
 add_subdirectory(examples)

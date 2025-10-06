@@ -1,5 +1,5 @@
 #pragma once
-
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -8,20 +8,18 @@
 
 #include "RedisClient.h"
 
-// Simple thread-safe pool for Redis connections.
-class RedisPool {
+class RedisPool : public std::enable_shared_from_this<RedisPool> {
 public:
-    RedisPool(const std::string& host, int port, size_t pool_size,
-              const std::string& password = "", int timeout_ms = 1000);
+    RedisPool(const std::string& host, int port, size_t pool_size, const std::string& password = "", int timeout_ms = 1000);
+
     ~RedisPool();
 
-    // Acquire a client from pool. Returned shared_ptr will automatically
-    // return client back to pool when destroyed.
     std::shared_ptr<RedisClient> GetClient();
 
 private:
     void Release(RedisClient* client);
 
+private:
     std::string host_;
     int port_;
     std::string password_;
@@ -29,6 +27,5 @@ private:
 
     std::mutex mutex_;
     std::condition_variable cond_;
-    std::queue<RedisClient*> clients_;
+    std::queue<std::unique_ptr<RedisClient>> clients_;
 };
-
