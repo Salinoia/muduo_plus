@@ -24,8 +24,9 @@ public:
     // 提交异步查询任务
     QueryCallback AsyncQuery(const std::string& sql, std::function<void(std::unique_ptr<sql::ResultSet>)>&& callback);
 
-    std::future<sql::ResultSet> SubmitQuery(const std::string& sql);
-    std::future<sql::ResultSet> SubmitExec(const std::string& sql);
+    std::future<std::unique_ptr<sql::ResultSet>> SubmitQuery(const std::string& sql);
+    std::future<bool> SubmitExec(const std::string&);
+    std::future<int> SubmitUpdate(const std::string&);
 
     // 停止所有 worker 线程
     void Shutdown();

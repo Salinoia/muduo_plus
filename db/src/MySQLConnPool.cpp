@@ -69,6 +69,28 @@ QueryCallback MySQLConnPool::AsyncQuery(const std::string& sql, std::function<vo
     return QueryCallback(std::move(future), std::move(callback));
 }
 
+std::future<std::unique_ptr<sql::ResultSet>> MySQLConnPool::SubmitQuery(const std::string& sql) {
+    auto operation = std::make_shared<SQLOperation>(sql);
+    auto future = operation->GetFuture();
+    queue_->Push(operation);
+    return future;
+}
+
+std::future<bool> MySQLConnPool::SubmitExec(const std::string& sql) {
+    auto op = std::make_shared<SQLOperation>(SQLKind::Exec, sql);
+    auto fut = op->GetFutureBool();   
+    queue_->Push(op);
+    return fut;
+}
+
+std::future<int> MySQLConnPool::SubmitUpdate(const std::string& sql) {
+    auto op = std::make_shared<SQLOperation>(SQLKind::Update, sql);
+    auto fut = op->GetFutureInt();    
+    queue_->Push(op);
+    return fut;
+}
+
+
 // ------------------ 停止所有线程 ------------------
 void MySQLConnPool::Shutdown() {
     {

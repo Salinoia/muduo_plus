@@ -12,7 +12,7 @@
 #include "Channel.h" 
 #include "EventLoop.h"
 #include "LogMacros.h"
-// 将 AMQP-CPP 的 TcpHandler 事件对接到 muduo_core 的 EventLoop/Channel
+// 将 AMQP-CPP 的 TcpHandler 事件对接到 core 的 EventLoop/Channel
 class MQHandler : public AMQP::TcpHandler {
 public:
     explicit MQHandler(EventLoop* loop) : loop_(loop) {}

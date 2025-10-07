@@ -10,16 +10,8 @@
 #include <thread>
 
 #include "BlockingQueue.h"
+#include "MySQLConnInfo.h"
 #include "SQLTask.h"
-
-// ------------------ 连接信息 ------------------
-struct MySQLConnInfo {
-    std::string url;
-    std::string user;
-    std::string password;
-    std::string database;
-    int timeout_sec = 5;
-};
 
 // ------------------ 数据库连接 ------------------
 class MySQLConn {

@@ -1,0 +1,58 @@
+# ===============================
+# order_server.yaml
+# ===============================
+
+serviceName: "order_server"
+enableTLS: false
+httpThreadNum: 4
+
+database:
+  connInfo:
+    url: "tcp://127.0.0.1:3306"
+    user: "root"
+    password: ""
+    database: "order_db"
+    timeout_sec: 5
+  maxConnections: 16
+  minConnections: 4
+  maxIdleTime: 60
+  connectTimeout: 5
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  poolSize: 8
+  timeoutMs: 1000
+  keyPrefix: "order:"
+  enableCache: true
+
+mq:
+  url: "amqp://guest:guest@127.0.0.1:5672/"
+  orderQueue: "order.events"
+  inventoryQueue: "inventory.events"
+  exchange: "order.exchange"
+  enableConsumer: true
+
+metrics:
+  enablePrometheus: false
+  port: 9090
+
+logging:
+  level: "INFO"
+  console: true
+  file: "./logs/order_server.log"
+
+# ===============================
+# optional advanced settings
+# ===============================
+
+reservation:
+  ttl_seconds: 300
+  restockRoutingKey: "inventory.restock"
+  reservationRoutingKey: "inventory.reservation"
+
+cache:
+  ttl_minutes: 10
+  userIndexPrefix: "user_orders:"
+  detailPrefix: "order:"

@@ -14,7 +14,7 @@ class ResultSet;
 class MySQLConn;
 
 // ------------------ SQL 异步任务 ------------------
-enum class SQLKind { Query, Exec };
+enum class SQLKind { Query, Exec, Update };
 class SQLOperation {
 public:
     SQLOperation(std::string sql) : kind_(SQLKind::Query), sql_(std::move(sql)) {}
@@ -22,11 +22,14 @@ public:
     void Execute(MySQLConn* conn);
 
     std::future<std::unique_ptr<sql::ResultSet>> GetFuture() { return promise_.get_future(); }
-
+    std::future<bool> GetFutureBool() { return promise_bool_.get_future(); }
+    std::future<int> GetFutureInt() { return promise_int_.get_future(); }
 private:
     SQLKind kind_;
     std::string sql_;
     std::promise<std::unique_ptr<sql::ResultSet>> promise_;
+    std::promise<bool> promise_bool_;
+    std::promise<int> promise_int_;
 };
 
 // ------------------ 回调包装 ------------------

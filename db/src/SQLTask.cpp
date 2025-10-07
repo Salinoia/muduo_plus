@@ -10,13 +10,16 @@
 void SQLOperation::Execute(MySQLConn* conn) {
     try {
         if (kind_ == SQLKind::Query) {
-            auto rs = conn->ExecuteQuery(sql_);
-            promise_.set_value(std::move(rs));
-        } else {  // Exec 类型（INSERT/UPDATE/DELETE）
-            conn->ExecuteUpdate(sql_);
-            promise_.set_value(nullptr);  // 无返回结果集
+            promise_.set_value(conn->ExecuteQuery(sql_));
+        } else if (kind_ == SQLKind::Exec) {
+            promise_bool_.set_value(conn->ExecuteStatement(sql_));
+        } else if (kind_ == SQLKind::Update) {
+            promise_int_.set_value(conn->ExecuteUpdate(sql_));
         }
-    } catch (const sql::SQLException& e) {
-        promise_.set_exception(std::make_exception_ptr(e));
+    } catch (...) {
+        // 出错时返回默认值
+        if (kind_ == SQLKind::Query) promise_.set_value(nullptr);
+        else if (kind_ == SQLKind::Exec) promise_bool_.set_value(false);
+        else promise_int_.set_value(-1);
     }
 }
