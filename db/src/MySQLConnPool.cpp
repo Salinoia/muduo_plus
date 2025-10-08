@@ -2,7 +2,7 @@
 
 #include <cppconn/exception.h>
 
-#include <iostream>
+#include "LogMacros.h"
 
 // ------------------ 静态成员定义 ------------------
 std::unordered_map<std::string, std::weak_ptr<MySQLConnPool>> MySQLConnPool::instances_;
@@ -47,8 +47,11 @@ void MySQLConnPool::CreateInitialConnections(const MySQLConnInfo& info) {
     std::lock_guard<std::mutex> lock(pool_mtx_);
     for (int i = 0; i < initial_size_; ++i) {
         auto conn = std::make_shared<MySQLConn>(info);
-        if (conn->Open())
+        if (conn->Open(3, 2)) {  // 带参测试
             conns_.push_back(conn);
+        } else {
+            LOG_ERROR("[MySQLConnPool] Failed to create connection {}/{}", i + 1, initial_size_);
+        }
     }
 }
 

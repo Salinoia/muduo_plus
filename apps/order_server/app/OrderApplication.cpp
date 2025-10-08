@@ -171,6 +171,12 @@ void OrderApplication::initHandlers() {
 }
 
 void OrderApplication::initRoutes() {
+    // -------------------- Health Check --------------------
+    httpServer_.Get("/health", [](const HttpRequest&, HttpResponse* resp) {
+        resp->setStatusCode(HttpResponse::k200Ok);
+        resp->setContentType("application/json");
+        resp->setBody("{\"status\":\"ok\"}");
+    });
     if (createHandler_) {
         auto handlerPtr = std::shared_ptr<OrderCreateHandler>(createHandler_.get(), [](OrderCreateHandler*) {});
         httpServer_.Post("/orders", handlerPtr);

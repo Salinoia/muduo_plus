@@ -20,6 +20,8 @@ public:
     ~MySQLConn() noexcept;
 
     bool Open();
+    bool Open(int maxRetries, int retryDelaySec);
+    
     void Close() noexcept;
 
     std::unique_ptr<sql::ResultSet> ExecuteQuery(const std::string& sql);

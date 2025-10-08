@@ -3,7 +3,7 @@
 #include <cppconn/exception.h>
 #include <cppconn/statement.h>
 
-#include <iostream>
+#include "LogMacros.h"
 
 // ------------------ MySQLConn ------------------
 MySQLConn::MySQLConn(const MySQLConnInfo& info) : info_(info) {
@@ -14,28 +14,47 @@ MySQLConn::~MySQLConn() noexcept {
     Close();
 }
 
-bool MySQLConn::Open() {
-    try {
-        conn_.reset(driver_->connect(info_.url, info_.user, info_.password));
-        if (!conn_)
-            return false;
-        conn_->setSchema(info_.database);
-        return true;
-    } catch (const sql::SQLException& e) {
-        std::cerr << "[MySQLConn] Connection failed: " << e.what() << " (Code: " << e.getErrorCode() << ", SQLState: " << e.getSQLStateCStr() << ")" << std::endl;
-        return false;
+// ✅ 新版：支持重试 + 日志输出
+bool MySQLConn::Open(int maxRetries, int retryDelaySec) {
+    for (int attempt = 0; attempt < maxRetries; ++attempt) {
+        try {
+            conn_.reset(driver_->connect(info_.url, info_.user, info_.password));
+            if (!conn_) {
+                LOG_ERROR("[MySQLConn] driver_->connect() returned null (attempt {}/{})", attempt + 1, maxRetries);
+                continue;
+            }
+            conn_->setSchema(info_.database);
+            LOG_INFO("[MySQLConn] Connected successfully to {}", info_.url);
+            return true;
+        } catch (const sql::SQLException& e) {
+            LOG_ERROR("[MySQLConn] Connection failed ({}/{}): {} (Code: {}, SQLState: {})", attempt + 1, maxRetries, e.what(), e.getErrorCode(), e.getSQLStateCStr());
+            if (attempt + 1 == maxRetries) {
+                LOG_FATAL("[MySQLConn] Reached max retries ({}), giving up.", maxRetries);
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(retryDelaySec));
+        }
     }
+    return false;
+}
+
+// 保留原有无参数版（默认 3 次）
+bool MySQLConn::Open() {
+    return Open(3, 2);
 }
 
 void MySQLConn::Close() noexcept {
     if (conn_) {
         try {
             conn_->close();
-        } catch (...) {}
+        } catch (...) {
+            LOG_WARN("[MySQLConn] Exception during close() ignored.");
+        }
         conn_.reset();
     }
 }
 
+// ------------------ SQL 操作 ------------------
 std::unique_ptr<sql::ResultSet> MySQLConn::ExecuteQuery(const std::string& sql) {
     if (!conn_)
         return nullptr;
@@ -43,7 +62,7 @@ std::unique_ptr<sql::ResultSet> MySQLConn::ExecuteQuery(const std::string& sql) 
         std::unique_ptr<sql::Statement> stmt(conn_->createStatement());
         return std::unique_ptr<sql::ResultSet>(stmt->executeQuery(sql));
     } catch (const sql::SQLException& e) {
-        std::cerr << "[MySQLConn] Query failed: " << e.what() << " (Code: " << e.getErrorCode() << ", SQLState: " << e.getSQLStateCStr() << ")" << std::endl;
+        LOG_ERROR("[MySQLConn] Query failed: {} (Code: {}, SQLState: {})", e.what(), e.getErrorCode(), e.getSQLStateCStr());
         return nullptr;
     }
 }
@@ -56,7 +75,7 @@ bool MySQLConn::ExecuteStatement(const std::string& sql) {
         stmt->execute(sql);
         return true;
     } catch (const sql::SQLException& e) {
-        std::cerr << "[MySQLConn] Execute failed: " << e.what() << " (Code: " << e.getErrorCode() << ", SQLState: " << e.getSQLStateCStr() << ")" << std::endl;
+        LOG_ERROR("[MySQLConn] Execute failed: {} (Code: {}, SQLState: {})", e.what(), e.getErrorCode(), e.getSQLStateCStr());
         return false;
     }
 }
@@ -68,7 +87,7 @@ int MySQLConn::ExecuteUpdate(const std::string& sql) {
         std::unique_ptr<sql::Statement> stmt(conn_->createStatement());
         return stmt->executeUpdate(sql);
     } catch (const sql::SQLException& e) {
-        std::cerr << "[MySQLConn] Update failed: " << e.what() << " (Code: " << e.getErrorCode() << ", SQLState: " << e.getSQLStateCStr() << ")" << std::endl;
+        LOG_ERROR("[MySQLConn] Update failed: {} (Code: {}, SQLState: {})", e.what(), e.getErrorCode(), e.getSQLStateCStr());
         return -1;
     }
 }
