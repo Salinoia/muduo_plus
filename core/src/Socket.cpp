@@ -12,7 +12,7 @@ Socket::~Socket() {
     ::close(sockfd_);
 }
 void Socket::bindAddress(const InetAddress& local_addr) {
-    if (::bind(sockfd_, (sockaddr*) local_addr.getSockAddr(), sizeof(sockaddr_in)) != 0) {
+    if (::bind(sockfd_, reinterpret_cast<const sockaddr*>(local_addr.getSockAddr()), sizeof(sockaddr_in)) != 0) {
         LOG_FATAL("bind socket fd:{} fail", sockfd_);
     }
 }
@@ -30,7 +30,7 @@ int Socket::accept(InetAddress* peerAddr) {
     socklen_t len = sizeof(addr);
     ::memset(&addr, 0, len);
     // 将返回的连接 fd 设置为非阻塞
-    int connfd = ::accept4(sockfd_, (sockaddr*) &addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    int connfd = ::accept4(sockfd_, reinterpret_cast<sockaddr*>(&addr), &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (connfd >= 0) {
         peerAddr->setSockAddr(addr);
     }

@@ -18,7 +18,7 @@ int make_socket_nonblocking(int fd) {
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int create_connection(const char* ip, int port) {
+int create_connection(const char* ip, unsigned short port) {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) return -1;
     make_socket_nonblocking(sockfd);
@@ -28,7 +28,7 @@ int create_connection(const char* ip, int port) {
     server.sin_port = htons(port);
     inet_pton(AF_INET, ip, &server.sin_addr);
 
-    int ret = connect(sockfd, (sockaddr*)&server, sizeof(server));
+    int ret = connect(sockfd, reinterpret_cast<sockaddr*>(&server), sizeof(server));
     if (ret == 0 || (ret < 0 && errno == EINPROGRESS)) {
         return sockfd;
     } else {
@@ -39,7 +39,7 @@ int create_connection(const char* ip, int port) {
 
 int main() {
     const char* server_ip = "172.17.15.130";
-    int port = 8000;
+    unsigned short port = 8000;
 
     std::vector<int> sockets;
     sockets.reserve(MAX_CONN);

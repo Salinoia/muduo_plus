@@ -20,7 +20,7 @@ public:
     }
 
 private:
-    EventLoop* loop_;
+    [[maybe_unused]] EventLoop* loop_;
     TcpServer server_;
     void onConnection(const TcpConnectionPtr& conn) {
         if (conn->connected()) {

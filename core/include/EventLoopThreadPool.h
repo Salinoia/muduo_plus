@@ -36,7 +36,7 @@ private:
     // ==== 线程池状态 ====
     bool started_;  // 启动状态
     int numThreads_;  // 线程数量
-    int next_;  // 轮询索引
+    size_t next_;  // 轮询索引
 
     // ==== 线程资源 ====
     std::vector<std::unique_ptr<EventLoopThread>> threads_;  // 线程列表

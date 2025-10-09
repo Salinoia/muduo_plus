@@ -5,7 +5,7 @@
 #include "LogMacros.h"
 
 // 自定义 BIO 方法
-static BIO_METHOD* createCustomBioMethod() {
+[[maybe_unused]] static BIO_METHOD* createCustomBioMethod() {
     BIO_METHOD* method = BIO_meth_new(BIO_TYPE_MEM, "custom");
     BIO_meth_set_write(method, TLSConnection::bioWrite);
     BIO_meth_set_read(method, TLSConnection::bioRead);
@@ -61,7 +61,7 @@ void TLSConnection::send(const void* data, size_t len) {
         return;
     }
 
-    int written = SSL_write(ssl_, data, len);
+    int written = SSL_write(ssl_, data, static_cast<int>(len));
     if (written <= 0) {
         int err = SSL_get_error(ssl_, written);
         LOG_ERROR("SSL_write failed: {}", ERR_error_string(err, nullptr));
@@ -81,7 +81,7 @@ void TLSConnection::send(const void* data, size_t len) {
 void TLSConnection::onRead(const TcpConnectionPtr& conn, BufferPtr buf, Timestamp time) {
     if (state_ == TLSState::HANDSHAKE) {
         // 将数据写入 BIO
-        BIO_write(readBio_, buf->peek(), buf->readableBytes());
+        BIO_write(readBio_, buf->peek(), static_cast<int>(buf->readableBytes()));
         buf->retrieve(buf->readableBytes());
         handleHandshake();
         return;
@@ -214,7 +214,7 @@ int TLSConnection::bioRead(BIO* bio, char* data, int len) {
     size_t toRead = std::min(static_cast<size_t>(len), readable);
     memcpy(data, conn->readBuffer_.peek(), toRead);
     conn->readBuffer_.retrieve(toRead);
-    return toRead;
+    return static_cast<int>(toRead);
 }
 
 long TLSConnection::bioCtrl(BIO* bio, int cmd, long num, void* ptr) {

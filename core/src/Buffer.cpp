@@ -32,11 +32,11 @@ ssize_t Buffer::readFd(int fd, int* saveErrno) {
 
     if (n < 0) {
         *saveErrno = errno;
-    } else if (n <= writable) {
-        writerIndex_ += n;  // 全部数据存入Buffer
+    } else if (static_cast<size_t>(n) <= writable) {
+        writerIndex_ += static_cast<size_t>(n);  // 全部数据存入Buffer
     } else {
         writerIndex_ = buffer_.size();
-        append(extrabuf, n - writable);  // 追加栈空间数据
+        append(extrabuf, static_cast<size_t>(n) - writable);  // 追加栈空间数据
     }
     return n;
 }

@@ -39,7 +39,8 @@ public:
 
     bool InvokeIfReady() {
         if (future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            callback_(std::move(future_.get()));
+            // 禁止使用 std::move 加右值，违背了返回值优化原则
+            callback_(future_.get());
             return true;
         }
         return false;

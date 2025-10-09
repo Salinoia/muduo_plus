@@ -25,7 +25,7 @@ bool RedisClient::Connect() {
     }
 
     if (!password_.empty()) {
-        redisReply* reply = (redisReply*) redisCommand(context_, "AUTH %s", password_.c_str());
+        redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(context_, "AUTH %s", password_.c_str()));
         bool ok = reply && reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK";
         if (reply)
             freeReplyObject(reply);
@@ -62,7 +62,7 @@ bool RedisClient::EnsureConnected() {
 bool RedisClient::Get(const std::string& key, std::string& value) {
     if (!EnsureConnected())
         return false;
-    redisReply* reply = (redisReply*) redisCommand(context_, "GET %s", key.c_str());
+    redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(context_, "GET %s", key.c_str()));
     if (!reply)
         return false;
     bool ok = (reply->type == REDIS_REPLY_STRING);
@@ -76,7 +76,7 @@ bool RedisClient::Get(const std::string& key, std::string& value) {
 bool RedisClient::Set(const std::string& key, const std::string& value) {
     if (!EnsureConnected())
         return false;
-    redisReply* reply = (redisReply*) redisCommand(context_, "SET %s %s", key.c_str(), value.c_str());
+    redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(context_, "SET %s %s", key.c_str(), value.c_str()));
     bool ok = reply && reply->type == REDIS_REPLY_STATUS && std::string(reply->str) == "OK";
     if (reply)
         freeReplyObject(reply);
@@ -87,7 +87,7 @@ bool RedisClient::Set(const std::string& key, const std::string& value) {
 bool RedisClient::Del(const std::string& key) {
     if (!EnsureConnected())
         return false;
-    redisReply* reply = (redisReply*) redisCommand(context_, "DEL %s", key.c_str());
+    redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(context_, "DEL %s", key.c_str()));
     bool ok = reply && reply->type == REDIS_REPLY_INTEGER && reply->integer > 0;
     if (reply)
         freeReplyObject(reply);

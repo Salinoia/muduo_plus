@@ -33,7 +33,4 @@ protected:
     // map的kv值: key:sockfd value:sockfd所属的channel通道类型
     using ChannelMap = std::unordered_map<int, Channel*>;
     ChannelMap channels_;
-
-private:
-    EventLoop* ownerLoop_;  // 定义Poller所属的事件循环EventLoop
 };

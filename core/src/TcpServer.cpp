@@ -40,7 +40,7 @@ TcpServer::~TcpServer() {
 
 // 设置subloop的个数
 void TcpServer::setThreadNum(int numThreads) {
-    int numThreads_ = numThreads;
+    this->numThreads_ = numThreads;
     threadPool_->setThreadNum(numThreads_);
 }
 
@@ -70,7 +70,7 @@ void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr) {
     sockaddr_in local;
     socklen_t addrLen = sizeof(local);
     ::memset(&local, 0, addrLen);
-    if (::getsockname(sockfd, (sockaddr*) &local, &addrLen) < 0) {
+    if (::getsockname(sockfd, reinterpret_cast<sockaddr*>(&local), &addrLen) < 0) {
         LOG_ERROR("socket::getLocalAddr");
     }
     InetAddress localAddr(local);

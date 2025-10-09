@@ -262,7 +262,7 @@ OrderRepository::Record OrderRepository::ParseSingle(sql::ResultSet* rs) const {
     r.userId       = safeString("user_id");
     r.productId    = safeString("product_id");
     r.quantity     = rs->getInt("quantity");
-    r.totalAmount  = rs->getDouble("total_amount");
+    r.totalAmount  = static_cast<double>(rs->getDouble("total_amount"));
     r.currency     = safeString("currency");
     r.status       = OrderStatusFromString(safeString("status"));
     r.statusReason = safeString("status_reason");

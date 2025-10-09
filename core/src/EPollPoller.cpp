@@ -31,7 +31,7 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList* activeChannels) {
     if (numEvents > 0) {
         LOG_INFO("{} events happend", numEvents);
         fillActiveChannels(numEvents, activeChannels);
-        if (numEvents == events_.size()) {
+        if (numEvents == static_cast<int>(events_.size())) {
             events_.resize(events_.size() * 2);
         }
     } else if (numEvents == 0) {
@@ -66,7 +66,6 @@ void EPollPoller::updateChannel(Channel* channel) {
         channel->setIndex(kAdded);
         update(EPOLL_CTL_ADD, channel);
     } else {  // channel已经在Poller中注册过
-        int fd = channel->getFd();
         if (channel->isNoneEvent()) {  // 为空事件，删除该fd
             update(EPOLL_CTL_DEL, channel);
             channel->setIndex(kDeleted);

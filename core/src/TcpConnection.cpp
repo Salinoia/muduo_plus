@@ -24,11 +24,11 @@ static EventLoop* CheckLoopNotNull(EventLoop* loop) {
 
 TcpConnection::TcpConnection(EventLoop* loop, const std::string& nameArg, int sockfd, const InetAddress& localAddr, const InetAddress& peerAddr) :
     loop_(CheckLoopNotNull(loop)),
-    name_(nameArg),
     state_(kConnecting),
     reading_(true),
     socket_(std::make_unique<Socket>(sockfd)),
     channel_(std::make_unique<Channel>(loop, sockfd)),
+    name_(nameArg),
     localAddr_(localAddr),
     peerAddr_(peerAddr),
     highWaterMark_(64 * 1024 * 1024)  // 64MB

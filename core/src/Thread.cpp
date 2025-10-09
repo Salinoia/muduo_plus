@@ -6,7 +6,7 @@
 
 std::atomic_int Thread::numCreated_(0);
 
-Thread::Thread(ThreadFunc func, const std::string& name) : started_(false), joined_(false), tid_(0), func_(std::move(func)), name_(name) {
+Thread::Thread(ThreadFunc func, const std::string& name) : started_(false), joined_(false), tid_(0), name_(name), func_(std::move(func)) {
     setDefaultName();
 }
 
@@ -43,7 +43,6 @@ void Thread::join() {
 }
 
 void Thread::setDefaultName() {
-    int num = ++numCreated_;
     if (name_.empty()) {
         name_ = "Thread" + std::to_string(++numCreated_);
     }

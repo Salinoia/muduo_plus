@@ -9,17 +9,18 @@ EventLoopThreadPool::~EventLoopThreadPool() {
 
 void EventLoopThreadPool::start(const ThreadInitCallback& cb) {
     started_ = true;
-    if (numThreads_ == 0 && cb) {  // 单线程
+    if (numThreads_ == 0 && cb) { // 单线程
         cb(baseLoop_);
     }
+
     for (int i = 0; i < numThreads_; ++i) {
-        char buf[name_.size() + 32];
-        snprintf(buf, sizeof buf, "%s%d", name_.c_str(), i + 1);
-        EventLoopThread* t = new EventLoopThread(cb, buf);
+        std::string threadName = name_ + std::to_string(i + 1);
+        EventLoopThread* t = new EventLoopThread(cb, threadName);
         threads_.push_back(std::unique_ptr<EventLoopThread>(t));
         loops_.push_back(t->startLoop());
     }
 }
+
 // 如果工作在多线程中，baseLoop_(mainLoop)会默认以轮询的方式分配Channel给subLoop
 EventLoop* EventLoopThreadPool::getNextLoop() {
     // 单线程， mainReactor 存在，subReactor 不存在

@@ -36,11 +36,11 @@ int createEventfd() {
 EventLoop::EventLoop() :
     looping_(false),
     quit_(false),
-    callingPendingFunctors_(false),
     threadId_(CurrentThread::tid()),
     poller_(Poller::newDefaultPoller(this)),
     wakeupFd_(createEventfd()),
-    wakeupChannel_(new Channel(this, wakeupFd_)) {
+    wakeupChannel_(new Channel(this, wakeupFd_)),
+    callingPendingFunctors_(false) {
     LOG_DEBUG("EvnetLoop created {} in thread {}", this, threadId_);
     if (t_loopInThisThread == nullptr) {
         t_loopInThisThread = this;

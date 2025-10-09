@@ -55,7 +55,7 @@ std::string SessionManager::generateSessionId() {
 
     std::ostringstream oss;
     for (auto b : bytes)
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int) b;
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
     return oss.str();
 }
 
