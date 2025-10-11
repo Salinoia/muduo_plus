@@ -46,11 +46,7 @@ OrderApplication::OrderApplication(EventLoop* loop, const InetAddress& listenAdd
     loop_(loop), httpServer_(loop, listenAddr, options.serviceName, options.enableTLS), options_(std::move(options)) {}
 
 OrderApplication::~OrderApplication() {
-    if (mqRouter_)
-        mqRouter_->Stop();
-    if (orderConsumer_ && orderConsumer_->IsRunning())
-        orderConsumer_->Stop();
-    started_ = false;
+    stop();
 }
 
 void OrderApplication::start() {
@@ -73,6 +69,18 @@ void OrderApplication::start() {
 
     started_ = true;
     LOG_INFO("OrderApplication started successfully");
+}
+
+void OrderApplication::stop() {
+    if (!started_) return;
+    LOG_INFO("[OrderApplication] Stopping service...");
+
+    if (mqRouter_) mqRouter_->Stop();
+    if (orderConsumer_ && orderConsumer_->IsRunning()) orderConsumer_->Stop();
+    httpServer_.stop();  // 退出 Reactor 层
+    if (mysqlPool_) mysqlPool_->Shutdown();
+
+    started_ = false;
 }
 
 void OrderApplication::configureHttpServer() {

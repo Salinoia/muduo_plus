@@ -129,13 +129,13 @@ void MySQLConnPool::KeepAliveLoop() {
         {
             std::lock_guard<std::mutex> lock(pool_mtx_);
             for (auto& conn : conns_) {
-                if (!conn->IsOpen() || !conn->ExecuteQuery("SELECT 1;")) {
-                    std::cerr << "[KeepAlive] Reconnecting to MySQL..." << std::endl;
-                    conn->Close();
-                    conn->Open();
+                if (!conn.unique()) continue; // 跳过被 Worker 持用的
+                if (!conn->Ping()) {
+                    LOG_WARN("[KeepAlive] Mark connection invalid {}", static_cast<const void*>(conn.get()));
                 }
             }
         }
         std::this_thread::sleep_for(interval);
     }
 }
+

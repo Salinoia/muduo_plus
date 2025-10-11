@@ -50,6 +50,14 @@ endif()
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose Release or Debug" FORCE)
 endif()
+# ----------------------------
+# AddressSanitizer 配置 (仅 Debug 模式)
+# ----------------------------
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "🔍 Enabling AddressSanitizer (ASan) for Debug build")
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
+endif()
 
 # ----------------------------
 # 添加子目录

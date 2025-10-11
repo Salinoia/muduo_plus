@@ -25,7 +25,7 @@ TcpServer::TcpServer(EventLoop* loop, const InetAddress& listenAddr, const std::
     nextConnId_(1),
     started_(0),
     connectionCallback_(),
-    messageCallback_() {  
+    messageCallback_() {
     // 当有新用户连接时，Acceptor类中绑定的acceptChannel_会有读事件发生，执行handleRead()调用TcpServer::newConnection回调
     acceptor_->setNewConnectionCallback([this](int sockfd, const InetAddress& listenAddr) { this->newConnection(sockfd, listenAddr); });
 }
@@ -54,6 +54,19 @@ void TcpServer::start() {
     }
 }
 
+void TcpServer::stop() {
+    if (threadPool_) {
+        for (auto* loop : threadPool_->getAllLoops()) {
+            if (loop) {
+                loop->quit();
+                loop->wakeup(); // 唤醒每个子 EventLoop
+            }  
+        }
+    }
+    if (loop_)
+        loop_->quit();  // 最后退出主 loop
+}
+
 // 每当有新用户连接时，acceptor会执行回调操作
 // 将mainLoop接收到的强求连接通过回调轮询分发给subLoop
 void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr) {
@@ -61,9 +74,9 @@ void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr) {
     EventLoop* ioLoop = threadPool_->getNextLoop();
 
     // ++nextConnId_;  // 没有设置为原子类是因为其只在mainloop中执行，不存在线程安全问题
-    int connId = nextConnId_.fetch_add(1, std::memory_order_relaxed); // 即使如此依然需要全部采取原子操作保持一致性
+    int connId = nextConnId_.fetch_add(1, std::memory_order_relaxed);  // 即使如此依然需要全部采取原子操作保持一致性
     char buf[64] = {0};
-    snprintf(buf, sizeof buf, "-%s#%d", ipPort_.c_str(), connId); // 注意：通过load()方法获取原子变量的值
+    snprintf(buf, sizeof buf, "-%s#%d", ipPort_.c_str(), connId);  // 注意：通过load()方法获取原子变量的值
     std::string connName = name_ + buf;
     LOG_INFO("TcpServer::newConnection [{}] - new connection [{}] from {}", name_, connName, peerAddr.toIpPort());
 

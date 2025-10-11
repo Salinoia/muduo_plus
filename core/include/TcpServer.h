@@ -1,9 +1,5 @@
 #pragma once
 
-/**
- * 用户使用muduo编写服务器程序
- **/
-
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -45,6 +41,8 @@ public:
      * 线程安全.
      */
     void start();
+
+    void stop();
 
 private:
     using ConnectionMap = std::unordered_map<std::string, TcpConnectionPtr>;

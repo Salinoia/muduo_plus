@@ -25,8 +25,8 @@ public:
     void quit();
 
     Timestamp pollReturnTime() const { return pollReturnTime_; }
-    void runInLoop(Functor cb);  // 在当前loop中执行
-    void queueInLoop(Functor cb);  // 把上层注册的回调函数cb放入队列中 唤醒loop所在的线程执行cb
+    void runInLoop(Functor&& cb);  // 在当前loop中执行
+    void queueInLoop(Functor&& cb);  // 把上层注册的回调函数cb放入队列中 唤醒loop所在的线程执行cb
     void wakeup();  // 通过eventfd唤醒loop对应的线程
 
     // EventLoop的方法 => Poller的方法
@@ -37,7 +37,6 @@ public:
     // 判断EventLoop对象是否在自己线程里：
     // threadId_为创建EventLoop对象的线程id; t_cachedTid为当前线程id；
     bool isInLoopThread() const { return CurrentThread::t_cachedTid == threadId_; }
-
 private:
     // ==== 核心事件循环状态 ====
     std::atomic_bool looping_;  // 是否在事件循环中

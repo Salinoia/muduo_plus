@@ -30,7 +30,9 @@ public:
 
     // 线程配置/启动
     void setThreadNum(int n) { server_.setThreadNum(n); }
+    
     void start();
+    void stop();
 
     // 业务回调（兜底）
     void setHttpCallback(const HttpCallback& cb) { httpCallback_ = cb; }

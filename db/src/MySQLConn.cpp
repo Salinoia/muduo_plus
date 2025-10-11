@@ -14,26 +14,31 @@ MySQLConn::~MySQLConn() noexcept {
     Close();
 }
 
-// ✅ 新版：支持重试 + 日志输出
 bool MySQLConn::Open(int maxRetries, int retryDelaySec) {
     for (int attempt = 0; attempt < maxRetries; ++attempt) {
         try {
-            conn_.reset(driver_->connect(info_.url, info_.user, info_.password));
-            if (!conn_) {
-                LOG_ERROR("[MySQLConn] driver_->connect() returned null (attempt {}/{})", attempt + 1, maxRetries);
-                continue;
+            {
+                std::lock_guard<std::mutex> lock(conn_mtx_);
+                conn_.reset(driver_->connect(info_.url, info_.user, info_.password));
+                if (!conn_) {
+                    LOG_ERROR("[MySQLConn] driver_->connect() returned null (attempt {}/{})", attempt + 1, maxRetries);
+                    alive_.store(false, std::memory_order_relaxed);
+                    continue;
+                }
+                conn_->setSchema(info_.database);
+                alive_.store(true, std::memory_order_relaxed);
             }
-            conn_->setSchema(info_.database);
             LOG_INFO("[MySQLConn] Connected successfully to {}", info_.url);
             return true;
         } catch (const sql::SQLException& e) {
             LOG_ERROR("[MySQLConn] Connection failed ({}/{}): {} (Code: {}, SQLState: {})", attempt + 1, maxRetries, e.what(), e.getErrorCode(), e.getSQLStateCStr());
+            alive_.store(false, std::memory_order_relaxed);
             if (attempt + 1 == maxRetries) {
                 LOG_FATAL("[MySQLConn] Reached max retries ({}), giving up.", maxRetries);
                 return false;
             }
-            std::this_thread::sleep_for(std::chrono::seconds(retryDelaySec));
         }
+        std::this_thread::sleep_for(std::chrono::seconds(retryDelaySec));
     }
     return false;
 }
@@ -44,6 +49,7 @@ bool MySQLConn::Open() {
 }
 
 void MySQLConn::Close() noexcept {
+    std::lock_guard<std::mutex> lock(conn_mtx_);
     if (conn_) {
         try {
             conn_->close();
@@ -52,6 +58,7 @@ void MySQLConn::Close() noexcept {
         }
         conn_.reset();
     }
+    alive_.store(false, std::memory_order_relaxed);
 }
 
 // ------------------ SQL 操作 ------------------
@@ -91,6 +98,20 @@ int MySQLConn::ExecuteUpdate(const std::string& sql) {
         return -1;
     }
 }
+
+bool MySQLConn::Ping() noexcept {
+    std::lock_guard<std::mutex> lock(conn_mtx_);
+    if (!conn_) return false;
+    try {
+        bool ok = conn_->isValid();
+        alive_.store(ok, std::memory_order_relaxed);
+        return ok;
+    } catch (...) {
+        alive_.store(false, std::memory_order_relaxed);
+        return false;
+    }
+}
+
 // ------------------ MySQLWorker ------------------
 MySQLWorker::MySQLWorker(std::shared_ptr<MySQLConn> conn, std::shared_ptr<BlockingQueue<std::shared_ptr<SQLOperation>>> queue) : conn_(std::move(conn)), queue_(std::move(queue)) {}
 
@@ -112,8 +133,14 @@ void MySQLWorker::Stop() {
 void MySQLWorker::WorkerLoop() {
     std::shared_ptr<SQLOperation> task;
     while (running_ && queue_->Pop(task)) {
-        if (!task)
-            continue;
+        if (!task) continue;
+
+        if (!conn_->IsAlive()) {
+            LOG_WARN("[MySQLWorker] Connection invalid, attempting reconnect");
+            conn_->Close();
+            conn_->Open();
+        }
+
         task->Execute(conn_.get());
     }
 }

@@ -24,6 +24,13 @@ void HttpServer::start() {
     server_.start();
 }
 
+void HttpServer::stop() {
+    LOG_INFO("[HttpServer] Stopping server...");
+    server_.stop();
+    LOG_INFO("[HttpServer] Shutdown complete");
+}
+
+
 void HttpServer::onConnection(const TcpConnectionPtr& conn) {
     if (conn->connected()) {
         if (useTLS_) {

@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -29,11 +30,17 @@ public:
     int ExecuteUpdate(const std::string& sql);
 
     bool IsOpen() const noexcept { return conn_ != nullptr; }
+    
+    bool Ping() noexcept;
+    bool IsAlive() const noexcept { return alive_.load(std::memory_order_relaxed); }
 
 private:
+
     sql::Driver* driver_{nullptr};
     std::unique_ptr<sql::Connection> conn_;
     MySQLConnInfo info_;
+    std::atomic<bool> alive_{true}; 
+    std::mutex conn_mtx_;
 };
 
 // ------------------ 异步执行线程 ------------------

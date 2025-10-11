@@ -1,6 +1,7 @@
 #include "EPollPoller.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -99,15 +100,34 @@ void EPollPoller::fillActiveChannels(int numEvents, ChannelList* activeChannels)
 }
 
 void EPollPoller::update(int operation, Channel* channel) {
-    epoll_event event;
-    ::memset(&event, 0, sizeof(event));
+    epoll_event event{};
     int fd = channel->getFd();
 
     event.events = channel->getEvents();
     event.data.fd = fd;
     event.data.ptr = channel;
+
     LOG_INFO("epoll_ctl op={} fd={}", operation, fd);
+
+    // 1. 检查 fd 是否已被 close（避免 EBADF）
+    bool alive = (::fcntl(fd, F_GETFD) != -1 || errno != EBADF);
+
+    // 如果 fd 已经关闭且是 DEL/MOD 操作，就跳过 epoll_ctl
+    if (!alive && (operation == EPOLL_CTL_DEL || operation == EPOLL_CTL_MOD)) {
+        LOG_WARN("[EPollPoller] skip epoll_ctl(op={}, fd={}) because fd already closed", operation, fd);
+        return;
+    }
+
+    // 2. 正常执行 epoll_ctl
     if (::epoll_ctl(epollfd_, operation, fd, &event) < 0) {
+        // 如果是 DEL/MOD 且 errno=EBADF/ENOENT，则视为“幂等成功”
+        if ((operation == EPOLL_CTL_DEL || operation == EPOLL_CTL_MOD) &&
+            (errno == EBADF || errno == ENOENT)) {
+            LOG_WARN("[EPollPoller] ignore benign epoll_ctl(op={}, fd={}) errno={}", operation, fd, errno);
+            return;
+        }
+
+        // 其它错误才打印 ERROR
         LOG_ERROR("epoll_ctl error op={} fd={} errno={}", operation, fd, errno);
         if (operation == EPOLL_CTL_DEL) {
             LOG_ERROR("epoll_ctl del error:{}", errno);

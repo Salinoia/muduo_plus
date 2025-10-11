@@ -51,7 +51,8 @@ public:
     // ===== 生命周期控制 =====
     void start();  // 启动整个服务（幂等）
     bool isStarted() const noexcept { return started_; }
-
+    void stop();
+    
     // ===== 对外扩展接口 =====
     MySQLConnPool* mysqlPool() const noexcept { return mysqlPool_.get(); }
     RedisPool* redisPool() const noexcept { return redisPool_.get(); }

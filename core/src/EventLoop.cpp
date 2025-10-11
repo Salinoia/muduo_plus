@@ -61,6 +61,7 @@ EventLoop::~EventLoop() {
 void EventLoop::loop() {
     looping_ = true;
     quit_ = false;
+    wakeup();  // 启动前先唤醒一次，确保poll不长阻塞
     LOG_INFO("EventLoop {} start looping", this);
     while (!quit_) {
         activeChannels_.clear();
@@ -81,18 +82,18 @@ void EventLoop::quit() {
     }
 }
 
-void EventLoop::runInLoop(Functor cb) {
+void EventLoop::runInLoop(Functor&& cb) {
     if (isInLoopThread()) {  // 在当前线程执行回调
         cb();
     } else {  // 非当前线程执行回调，唤醒EventLoop所在线程进行回调
-        queueInLoop(cb);
+        queueInLoop(std::move(cb));
     }
 }
 
-void EventLoop::queueInLoop(Functor cb) {
+void EventLoop::queueInLoop(Functor&& cb) {
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        pendingFunctors_.emplace_back(cb);
+        pendingFunctors_.emplace_back(std::move(cb));
     }
     if (!isInLoopThread() || callingPendingFunctors_) {
         wakeup();
@@ -120,10 +121,16 @@ bool EventLoop::hasChannel(Channel* channel) {
 }
 
 void EventLoop::handleRead() {
-    uint64_t one = 1;
-    ssize_t n = read(wakeupFd_, &one, sizeof(one));
-    if (n != sizeof(one)) {
-        LOG_ERROR("EventLoop::handleRead() writes {} bytes instead of 8", n);
+    uint64_t one;
+    ssize_t n = 0;
+    int count = 0;
+    while ((n = ::read(wakeupFd_, &one, sizeof(one))) > 0) {
+        ++count;
+    }
+    if (count > 0) {
+        LOG_DEBUG("EventLoop::handleRead() drained {} wakeups", count);
+    } else if (n < 0 && errno != EAGAIN) {
+        LOG_ERROR("EventLoop::handleRead() read error: {}", errno);
     }
 }
 

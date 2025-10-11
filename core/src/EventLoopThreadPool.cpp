@@ -9,7 +9,7 @@ EventLoopThreadPool::~EventLoopThreadPool() {
 
 void EventLoopThreadPool::start(const ThreadInitCallback& cb) {
     started_ = true;
-    if (numThreads_ == 0 && cb) { // 单线程
+    if (numThreads_ == 0 && cb) {  // 单线程
         cb(baseLoop_);
     }
 
@@ -33,4 +33,12 @@ EventLoop* EventLoopThreadPool::getNextLoop() {
         }
     }
     return loop;
+}
+
+std::vector<EventLoop*> EventLoopThreadPool::getAllLoops() {
+    std::vector<EventLoop*> all = loops_;
+    if (loops_.empty()) {
+        all.push_back(baseLoop_);  // 单线程模式下也返回主loop
+    }
+    return all;
 }
