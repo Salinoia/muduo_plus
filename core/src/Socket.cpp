@@ -9,8 +9,10 @@
 #include "InetAddress.h"
 #include "LogMacros.h"
 Socket::~Socket() {
+    LOG_INFO("Socket::~Socket() closing fd={}", sockfd_);
     ::close(sockfd_);
 }
+
 void Socket::bindAddress(const InetAddress& local_addr) {
     if (::bind(sockfd_, reinterpret_cast<const sockaddr*>(local_addr.getSockAddr()), sizeof(sockaddr_in)) != 0) {
         LOG_FATAL("bind socket fd:{} fail", sockfd_);

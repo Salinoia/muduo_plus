@@ -1,23 +1,19 @@
 #include "RedisClient.h"
+#include "LogMacros.h"
 
-#include <iostream>
-
-// 构造函数
 RedisClient::RedisClient(const std::string& host, int port, const std::string& password, const struct timeval& timeout) :
     host_(host), port_(port), password_(password), timeout_(timeout), context_(nullptr) {}
 
-// 析构函数
 RedisClient::~RedisClient() noexcept {
     Close();
 }
 
-// 连接
 bool RedisClient::Connect() {
     Close();
     context_ = redisConnectWithTimeout(host_.c_str(), port_, timeout_);
     if (!context_ || context_->err) {
         if (context_) {
-            std::cerr << "[RedisClient] Connect error: " << context_->errstr << std::endl;
+            LOG_ERROR("[RedisClient] Connect error: {}", context_->errstr);
             redisFree(context_);
         }
         context_ = nullptr;
@@ -30,35 +26,34 @@ bool RedisClient::Connect() {
         if (reply)
             freeReplyObject(reply);
         if (!ok) {
-            std::cerr << "[RedisClient] Auth failed\n";
+            LOG_ERROR("[RedisClient] Auth failed for {}:{}", host_, port_);
             Close();
             return false;
         }
     }
+
+    LOG_INFO("[RedisClient] Connected successfully to {}:{}", host_, port_);
     return true;
 }
 
-// 关闭连接
 void RedisClient::Close() noexcept {
     if (context_) {
+        LOG_INFO("[RedisClient] Closing connection to {}:{}", host_, port_);
         redisFree(context_);
         context_ = nullptr;
     }
 }
 
-// 连接状态
 bool RedisClient::IsConnected() const noexcept {
     return context_ && !context_->err;
 }
 
-// 确保连接可用
 bool RedisClient::EnsureConnected() {
     if (!IsConnected())
         return Connect();
     return true;
 }
 
-// GET
 bool RedisClient::Get(const std::string& key, std::string& value) {
     if (!EnsureConnected())
         return false;
@@ -72,7 +67,6 @@ bool RedisClient::Get(const std::string& key, std::string& value) {
     return ok;
 }
 
-// SET
 bool RedisClient::Set(const std::string& key, const std::string& value) {
     if (!EnsureConnected())
         return false;
@@ -83,7 +77,6 @@ bool RedisClient::Set(const std::string& key, const std::string& value) {
     return ok;
 }
 
-// DEL
 bool RedisClient::Del(const std::string& key) {
     if (!EnsureConnected())
         return false;

@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include "InetAddress.h"
-#include "Logger.h"
 #include "LogMacros.h"
 
 static int createNonBlockingSocket() {

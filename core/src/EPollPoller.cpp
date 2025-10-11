@@ -106,7 +106,9 @@ void EPollPoller::update(int operation, Channel* channel) {
     event.events = channel->getEvents();
     event.data.fd = fd;
     event.data.ptr = channel;
+    LOG_INFO("epoll_ctl op={} fd={}", operation, fd);
     if (::epoll_ctl(epollfd_, operation, fd, &event) < 0) {
+        LOG_ERROR("epoll_ctl error op={} fd={} errno={}", operation, fd, errno);
         if (operation == EPOLL_CTL_DEL) {
             LOG_ERROR("epoll_ctl del error:{}", errno);
         } else {

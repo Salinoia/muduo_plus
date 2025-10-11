@@ -55,9 +55,11 @@ endif()
 # 添加子目录
 # ----------------------------
 add_subdirectory(apps/order_server)
+add_subdirectory(base)
 add_subdirectory(cache)
 add_subdirectory(core)
 add_subdirectory(db)
+add_subdirectory(logger)
 add_subdirectory(mq)
 add_subdirectory(net)
 add_subdirectory(tests)

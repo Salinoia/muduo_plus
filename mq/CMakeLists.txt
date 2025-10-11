@@ -6,7 +6,8 @@ target_include_directories(mq PUBLIC
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
-target_link_libraries(mq PUBLIC core amqpcpp pthread)
+find_package(Threads)
+target_link_libraries(mq PUBLIC core logger amqpcpp Threads::Threads)
 # # 1️⃣ 安装依赖
 # sudo apt update
 # sudo apt install -y git cmake build-essential libssl-dev libev-dev

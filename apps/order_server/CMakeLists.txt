@@ -19,14 +19,16 @@ target_include_directories(order_server PRIVATE
 )
 
 # 链接依赖库
+find_package(Threads)
 target_link_libraries(order_server PRIVATE
     core
     net
     db
     cache
+    logger
     mq
     yaml-cpp
-    pthread
+    Threads::Threads
 )
 
 # 输出路径

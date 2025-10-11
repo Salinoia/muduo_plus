@@ -1,99 +1,130 @@
 # muduo_plus
 
-## 项目概览
-muduo_plus 从零实现了一个覆盖网络层、传输层、应用层的全栈 C++20 服务端样板：底层复刻并强化 Muduo 风格的 Reactor 事件循环；中间层整合 HTTP/TLS、Redis、MySQL、RabbitMQ；上层构建真实业务的订单服务。项目显示出如何在现代 C++ 中用标准库与精选开源库搭建可观测、可扩展的服务端基座。
+> 一套从 Reactor 内核到订单业务全链打通的现代 C++20 服务端样板工程
 
-## 架构亮点
-- **事件循环自研到底**：`EventLoop`、`Channel`、`EPollPoller`、`TcpServer` 等核心组件完全手写，配合 `EventLoopThreadPool` 支撑多核扩展。
-- **现代 C++ 语义**：广泛使用 `std::source_location`、`std::chrono`、`std::shared_ptr`/`std::unique_ptr`、结构化绑定、`std::format` 等 C++20 能力，让接口简洁且类型安全。
-- **全链路中间件接入**：MySQL（mysql-connector-c++）、Redis（hiredis）、RabbitMQ（amqpcpp）、配置解析（yaml-cpp）、JSON 序列化（nlohmann_json）均与事件循环联动，减少阻塞。
-- **业务分层可复用**：`apps/order_server` 以应用/App、领域/Domain、基础设施/Infra、接口/Interface 分层，提供复杂依赖组合、库存校验、缓存预热、消息驱动等真实场景。
-- **工程化闭环**：模块化 CMake、Docker Compose、一键巡检脚本 `test.sh`，在学习框架的同时获取面向生产的工程体验。
+## 技术亮点
+- 纯手写 Reactor：`core/` 模块内自实现 `EventLoop`、`Channel`、`EPollPoller`、`TcpServer`，线程安全的 `runInLoop`/`queueInLoop` 让多核扩展自然完成。
+- 工程化 Logger：`logger/` 提供统一宏与 `std::source_location` 注入，伴随全局 `LogLevel`、滚动文件与彩色控制台输出。
+- 中间件一体化：MySQL、Redis、RabbitMQ、YAML、JSON 均以 RAII + 智能指针封装；`RedisPool` 具备自动重连，`MQClient` 按生命周期关闭连接。
+- 真实业务演示：`apps/order_server` 按 App/Domain/Infra/Interface 分层，涵盖库存预留、缓存回填、订单事件发布与消费。
+- DevOps 配套：模块化 CMake、`docker-compose.yml`、一键巡检脚本 `test.sh`、可选 Prometheus 指标端口，便于课堂到生产的迁移。
 
-## 目录结构速览
+## 分层结构总览
+- **Core Layer**：基于 epoll 的 Reactor 内核，包含线程池、Buffer、Timestamp 与跨线程任务派发。
+- **Network & Middleware Layer**：`net/` HTTP/TLS 协议栈搭配中间件适配器，RabbitMQ handler 直接挂入事件循环。
+- **Data Layer**：`db/` 的 `MySQLConnPool`、`cache/` 的 `RedisPool`，以及 JSON/YAML 配置解析。
+- **Application Layer**：订单域模型、仓储、HTTP/MQ 处理器、自定义依赖装配、缓存预热。
+- **Operations Layer**：日志、配置、脚本、Docker、健康检查、巡检工具，构建完整的运维闭环。
+
+## 目录导航
 ```
 muduo_plus/
-├── core/                    # 事件循环、Channel、Logger 等底层组件
-│   ├── include/
-│   └── src/
-├── net/                     # HTTP/TLS 协议栈与中间件体系
-│   ├── include/
-│   └── src/
-├── db/                      # MySQL 连接池、仓储工具
-│   ├── include/
-│   └── src/
-├── cache/                   # Redis 客户端与连接池
-├── mq/                      # AMQP-CPP 集成封装
-├── apps/
-│   └── order_server/
-│       ├── app/             # 应用装配、配置解析
-│       ├── domain/          # 领域服务（订单、库存）
-│       ├── infra/           # DB/Cache/MQ 等基础设施实现
-│       └── interface/       # HTTP 处理器、MQ 路由
-├── tests/                   # echo/client 网络示例
-├── docker-compose.yml       # 依赖服务编排
-└── test.sh                  # 端到端巡检脚本
+├── core/              # Reactor 与底层基元
+├── net/               # HTTP/TLS、Session、Middleware
+├── db/                # MySQL 连接池与仓储工具
+├── cache/             # RedisClient / RedisPool
+├── mq/                # AMQP-CPP 集成与 MQProducer/Consumer
+├── apps/order_server/ # 订单服务（app/domain/infra/interface/config）
+├── logger/            # 日志实现与宏定义
+├── tests/             # 基础网络示例与单元测试
+├── docker-compose.yml # MySQL + Redis + RabbitMQ 一键启动
+└── test.sh            # 端到端巡检脚本
 ```
 
-## 核心模块剖析
-- **`core/` —— Reactor 内核**  
-  - 以 epoll 为核心构建 `EPollPoller`，`Channel` 负责 fd 事件的生命周期管理。  
-  - `EventLoop` 提供线程亲和的任务分发、`runInLoop`/`queueInLoop` 等跨线程调度。  
-  - `EventLoopThread` 与 `EventLoopThreadPool` 通过 `std::thread` + 条件变量编排多 Reactor 模式。  
-  - `Logger`/`LogMacros` 借助 `std::source_location` 自动注入文件行号，输出统一格式日志。  
-  - 辅以 `Timestamp`、`Buffer`、`Thread` 等工具类，完整覆盖从 IO 多路复用到连接管理的基建。
+## 构建与运行
 
-- **`net/` —— HTTP & TLS 层**  
-  - `HttpServer` 复用 `TcpServer`，支持 GET/POST 路由、正则路由与 Handler 对象化。  
-  - `MiddlewareChain` 让鉴权、CORS、限流等可插拔；`SessionManager` 支持多种会话存储策略。  
-  - `TLSContext`/`TLSConnection` 对 OpenSSL 做 RAII 封装，可无缝切换明文/TLS。  
-  - `HttpRequest`/`HttpResponse` 提供简单的 Header/Body 操作与 JSON 友好接口，便于快速构建 REST API。
+### 准备依赖
+- CMake ≥ 3.15、C++20 编译器（GCC 11+/Clang 14+）
+- 系统库：`pthread`、`mysqlcppconn`、`hiredis`、`yaml-cpp`、`nlohmann_json`、`amqpcpp`、`OpenSSL`
+- 可选：Docker & Docker Compose（快速启动依赖服务）
 
-- **`db/` —— MySQL 数据访问层**  
-  - `MySQLConn` 对 mysql-connector-c++ 做 RAII 包装，提供重试、超时、异常日志。  
-  - `MySQLConnPool` 管理最小/最大连接数、空闲回收、阻塞队列，实现线程安全的池化访问。  
-  - `SQLTask`/`BlockingQueue` 支持异步任务派发，`OrderRepository` 展示仓储模式整合 SQL 与领域模型。  
-  - 使用 `nlohmann_json`/`yaml-cpp` 将配置转换为连接信息，方便扩展多数据源。
+### 快速启动
+1. 启动依赖服务
+   ```bash
+   docker compose up -d mysql redis rabbitmq
+   ```
+2. 配置数据库
+   ```bash
+   mysql -h127.0.0.1 -uroot -e "CREATE DATABASE IF NOT EXISTS order_db;"
+   ```
+3. 构建项目
+   ```bash
+   mkdir -p build && cd build
+   cmake ..
+   cmake --build . -j
+   ```
+4. 运行订单服务
+   ```bash
+   export ORDER_SERVER_CONFIG=apps/order_server/config/config.yaml
+   ./bin/order_server --config ${ORDER_SERVER_CONFIG}
+   ```
+5. 使用 `test.sh` 巡检
+   ```bash
+   ./test.sh
+   ```
 
-- **`cache/` —— Redis 缓存层**  
-  - `RedisClient` 基于 hiredis，封装 `Connect/Get/Set/Del`，采用 `EnsureConnected` 保证断线重连。  
-  - `RedisPool` 以 `std::queue<std::unique_ptr<RedisClient>>` + 自定义 deleter 管理资源回收，结合条件变量实现借还模型。  
-  - 任何获取到的 `std::shared_ptr<RedisClient>` 都具备自动归还能力，方便在业务层安全使用。
+> 若本地已安装所需依赖，可跳过 Docker；`ORDER_SERVER_CONFIG` 环境变量优先级高于命令行 `--config`。
 
-- **`mq/` —— RabbitMQ 集成层**  
-  - `MQHandler` 将 AMQP-CPP 的 `TcpHandler` 嵌入 `EventLoop`，以 `Channel` 监听底层 fd，可同时响应读写事件。  
-  - `MQClient`、`MQProducer`、`MQConsumer` 把连接、发布、消费封装为高阶接口。  
-  - `interface/mq/MQEventRouter` 负责事件注册与分发，支持动态扩展业务处理器，实现“MQ→领域服务”的桥梁。
+## 配置说明
 
-- **`apps/order_server/` —— 业务演示层**  
-  - **`app/`**：`OrderApplication` 汇聚配置解析（`OrderServerOptions::FromConfig`）、HTTP/MQ/DB/Redis 初始化、缓存预热、事件路由启动。  
-  - **`domain/`**：抽象 `OrderService`、`InventoryService`，展示聚合根、库存预留、状态变迁等领域逻辑。  
-  - **`infra/`**：按职责划分 `db/OrderRepository`、`cache/OrderCache`、`inventory/InventoryRepository`、`mq/OrderEventConsumer`，让业务逻辑与存储/外部系统隔离。  
-  - **`interface/`**：`OrderCreateHandler`、`OrderQueryHandler`、`MQEventRouter` 将 HTTP/MQ 请求映射为领域操作，并通过依赖注入解耦。  
-  - 这一层串联起启动、配置、持久化、缓存、消息与接口，真实呈现“从网络层到应用层”的端到端调用链。
+`apps/order_server/config/config.yaml` 统一管理服务名、线程数、中间件、缓存、MQ、日志等配置，可通过环境变量或命令行覆盖。示例片段：
 
-- **周边配套**  
-  - `tests/` 提供 echo/client 演示，验证核心网络栈。  
-  - `docker-compose.yml` 编排 MySQL/Redis/RabbitMQ，助力本地快速落地。  
-  - `test.sh` 串联健康检查、下单、DB 校验、Redis 命中，方便回归。
+```yaml
+serviceName: "order_server"
+httpThreadNum: 4
 
-## 关键文件
-- `core/src/EventLoop.cpp`：事件循环主实现，负责调度 IO 事件与任务队列。
-- `core/include/EPollPoller.h`：封装 epoll 行为的 Poller 抽象与实现接口。
-- `net/include/HttpServer.h`：HTTP 服务入口，关联路由、中间件、Session 与 TLS。
-- `db/src/MySQLConnPool.cpp`：MySQL 连接池逻辑，处理池化、超时与重连策略。
-- `cache/RedisPool.cpp`：Redis 连接池实现，演示智能指针与条件变量协作。
-- `mq/include/MQHandler.h`：将 AMQP-CPP 与 `EventLoop` 对接的核心桥梁。
-- `apps/order_server/app/OrderApplication.cpp`：应用装配与依赖初始化的总控。
-- `apps/order_server/domain/OrderService.cpp`：订单领域逻辑与状态流转示例。
-- `apps/order_server/interface/http/OrderCreateHandler.cpp`：下单接口完整流程。
-- `apps/order_server/interface/mq/MQEventRouter.cpp`：MQ 事件路由与处理注册。
+database:
+  connInfo:
+    url: "tcp://127.0.0.1:3306"
+    user: "root"
+    database: "order_db"
+    timeout_sec: 5
+  maxConnections: 16
 
-## 关键能力速览
-- `EventLoopThreadPool` 负责 Reactor 线程扩展，确保多核场景下连接分配均衡。
-- Redis、RabbitMQ 的 socket 事件完全由自研 `EventLoop` 驱动，实现跨中间件的统一调度模型。
-- 业务层以 `Dependencies` 结构体显式声明依赖，让测试替换、Mock 与模块拆分更加顺滑。
-- 日志与错误处理贯穿各层，辅以缓存预热、健康检查、优雅停机，强调生产可运维性。
+redis:
+  host: "127.0.0.1"
+  poolSize: 8
+  timeoutMs: 1000
 
-## 简要使用提示
-项目使用 CMake 构建，依赖 `mysqlcppconn`、`hiredis`、`yaml-cpp`、`nlohmann_json`、`amqpcpp` 与 `OpenSSL`。准备好依赖后在 `build/` 目录执行常规 CMake 构建即可产出 `bin/order_server`，运行时通过 `apps/order_server/config/config.yaml` 或命令行 `--config`/环境变量覆盖配置，实现端到端演示。
+mq:
+  url: "amqp://guest:guest@127.0.0.1:5672/"
+  exchange: "order.exchange"
+  enableConsumer: true
+```
+
+`OrderServerOptions::FromConfig` 借助 `ConfigLoader` 自动读取嵌套字段，并在初始化阶段校验必填字段，避免运行期故障。
+
+## HTTP API
+
+- `GET /health`：健康检查，返回 `{"status":"ok"}`。
+- `POST /orders`：创建订单，需要 `userId`、`productId`、`quantity`、`amount`、`currency`。
+- `GET /orders?id={orderId}`：按订单号查询，缓存命中优先。
+- `GET /orders?userId={uid}&limit=20`：按用户分页查询，同时回填缓存。
+
+示例请求：
+
+```bash
+curl -X POST http://127.0.0.1:8080/orders \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"u1","productId":"sku-1","quantity":2,"amount":199.0,"currency":"CNY"}'
+```
+
+响应包含 `orderId`、订单状态以及金额、时间戳等信息。
+
+## 消息与缓存联动
+- `OrderCreateHandler`：下单后写库、更新 Redis、发布 MQ（`order.exchange` + routing key），失败自动释放库存。
+- `OrderQueryHandler`：可选缓存优先策略，列表与详情查询分别维护索引、详情键并在 DB 命中后回填。
+- `RedisPool`：基于 `std::queue<std::unique_ptr<RedisClient>>` 实现借还模型，支持超时、断线重连、条件变量唤醒。
+- `MQEventRouter`：消费 RabbitMQ 事件，路由订单创建/支付/取消与库存释放，支持动态注册扩展。
+
+## 日志与可观测性
+- `LogMacros.h` 注入源文件、行号和线程 ID，`logger/` 支持控制台与文件双写，日志级别可在配置中调整。
+- `OrderApplication` 启动期执行 Schema 校验、缓存预热、MQ/Redis/DB 初始化，日志逐步输出诊断信息。
+- Prometheus 端口配置（默认 9090）保留占位，后续可扩展指标暴露。
+
+## 巡检与调试
+- `./test.sh` 会校验进程状态、HTTP 健康、下单、查询、数据库入库、Redis 缓存与最终摘要。
+- `tests/` 目录提供 echo/client 示例，可在 `ctest` 或单独执行验证网络栈。
+- 推荐在 Debug 构建模式下配合 `gdb` 与日志定位问题，`OrderApplication` 可启用更多 DEBUG 级日志输出。
+
+欢迎在此基础上扩展更多协议、领域服务或观测指标，muduo_plus 旨在为现代 C++ 服务端开发提供开箱即用的教学与实战蓝本。

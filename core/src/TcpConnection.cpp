@@ -121,6 +121,7 @@ void TcpConnection::connectEstablished() {
 }
 
 void TcpConnection::connectDestroyed() {
+    LOG_INFO("connectDestroyed() fd={} state={}", channel_->getFd(), state_.load());
     if (state_ == kConnected) {
         setState(kDisconnected);
         channel_->disableAll();

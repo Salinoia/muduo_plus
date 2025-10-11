@@ -10,12 +10,11 @@
 #include <string_view>
 #include <thread>
 
-#include "NonCopyable.h"
 
 enum class LogLevel { TRACE, DEBUG, INFO, WARN, ERROR, FATAL };
 
 class AsyncFileSink;
-class Logger : NonCopyable {
+class Logger{
 private:
     void log(LogLevel level, std::string_view msg);
 
@@ -31,6 +30,11 @@ private:
     }
 
 public:
+    Logger(const Logger& other) = delete;
+    Logger& operator=(const Logger& other) = delete;
+    Logger(Logger&& other) noexcept = delete;
+    Logger& operator=(Logger&& other) = delete;
+
     static Logger& instance();
 
     void setLogLevel(LogLevel level);

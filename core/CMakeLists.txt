@@ -7,3 +7,9 @@ add_library(core SHARED ${SRC_FILES})
 #设置头文件的路径
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+find_package(Threads REQUIRED)
+target_link_libraries(core PUBLIC
+    base
+    logger
+    Threads::Threads
+)
